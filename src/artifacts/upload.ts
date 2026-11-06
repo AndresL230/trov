@@ -24,6 +24,7 @@ import { platform, systemTenant } from "../data/context";
 import { type PlatformContext, first } from "../data/platform-sql";
 import { orgLive } from "../data/suspension";
 import { artifactErrorResponse, jsonResponse, NOT_FOUND_BODY } from "./http";
+import { noCandidates, sweepR2 } from "../deletion/r2";
 
 export const UPLOAD_PREFIX = "/api/artifacts/upload/";
 /** A minted token: 32 random bytes, base64url, no padding. */
@@ -83,7 +84,10 @@ export async function handleArtifactUpload(request: Request, env: Env): Promise<
     if (image) return jsonResponse(image, 200);
     const sent = await consumeHandoffUploadToken(ctx, token, request.body, len);
     if (sent) return jsonResponse({ id: sent.handoff.id, url: sent.url, ...(sent.replayed ? { replayed: true } : {}) }, 200);
-    const result = await consumeUploadToken(ctx, env.ARTIFACTS_BUCKET, token, request.body);
+    // Bytes stored but no version landed: freed when nothing else holds them (checked while the token is still
+    // claimed), before the token is released for a retry.
+    const result = await consumeUploadToken(ctx, env.ARTIFACTS_BUCKET, token, request.body,
+      (sha) => sweepR2(p, env.ARTIFACTS_BUCKET, { ...noCandidates(), artifacts: [sha] }));
     return jsonResponse(result, 200);
   } catch (e) {
     if (e instanceof HandoffError) {

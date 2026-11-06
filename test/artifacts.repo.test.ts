@@ -501,6 +501,40 @@ describe("upload tokens", () => {
     expect((await consumeUploadToken(systemCtx(), BUCKET(), m.token, streamOf(BODY))).version_no).toBe(1);
   });
 
+  it("the bytes stored but the version not landed: the token is released (the link retries) after the caller frees the bytes", async () => {
+    const BODY = bytesOf("%PDF-1.7 unlanded-version body");
+    const sha = await sha256Hex(BODY);
+    const m = await mintUploadToken(systemCtx(), { kind: "pdf", size_bytes: BODY.byteLength, sha256: sha, title: "Unlanded", area: "api" }, ME);
+    const freed: string[] = [];
+    await env.DB.prepare(`CREATE TRIGGER t_no_version BEFORE INSERT ON artifact_versions BEGIN SELECT RAISE(ABORT, 'no version'); END`).run();
+    try {
+      await expect(consumeUploadToken(systemCtx(), BUCKET(), m.token, streamOf(BODY), async (s) => {
+        freed.push(s);
+        // Called while the token is still claimed: it does not count as a reference to its own bytes.
+        expect((await first<{ used_at: string | null }>(DB(), `SELECT used_at FROM artifact_upload_tokens`))!.used_at).not.toBeNull();
+      })).rejects.toThrow();
+    } finally {
+      await env.DB.prepare(`DROP TRIGGER IF EXISTS t_no_version`).run();
+    }
+    expect(freed).toEqual([sha]);
+    expect((await first<{ used_at: string | null }>(DB(), `SELECT used_at FROM artifact_upload_tokens`))!.used_at).toBeNull();
+    expect((await consumeUploadToken(systemCtx(), BUCKET(), m.token, streamOf(BODY))).version_no).toBe(1); // not `gone`
+  });
+
+  it("a PATCH never undoes a ratify that landed after it read the page (compare-and-set → conflict)", async () => {
+    const a = await mkText({ title: "Racing", visibility: "org" });
+    await setStatus(systemCtx(), a.slug, "published", ME);
+    const [patched] = await Promise.allSettled([
+      patchPage(systemCtx(), a.slug, { title: "Racing, renamed" }, ME),
+      ratify(systemCtx(), a.slug, 1, ME),
+    ]);
+    const row = (await first<{ status: string; title: string; ratified_version: number | null }>(DB(), `SELECT status, title, ratified_version FROM artifact_pages WHERE slug = ?`, a.slug))!;
+    // Whichever landed first, the ratify stands; the patch either landed before it or was refused.
+    expect(row).toMatchObject({ status: "ratified", ratified_version: 1 });
+    if (patched.status === "rejected") expect((patched.reason as ArtifactError).code).toBe("conflict");
+    else expect(row.title).toBe("Racing, renamed");
+  });
+
   it("knowing an existing object's sha256 never attaches it without its bytes", async () => {
     const secret = bytesOf("someone else's confidential pdf");
     const sha = await sha256Hex(secret);
