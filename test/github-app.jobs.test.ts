@@ -287,6 +287,47 @@ describe("when GitHub will not give the installation a token", () => {
   });
 });
 
+describe("what the webhook may have left wrong, healed by the cron's reconcile unit (recheckInstallation)", () => {
+  it("a suspended binding is asked about again: lifted on GitHub → live, audited as the system — still suspended → stays, one question", async () => {
+    await twoOrgs();
+    await run(env.DB, `UPDATE org_github_installations SET suspended_at = '2026-10-07T00:00:00.000Z', suspension_at = '2026-10-07T00:00:00.000Z' WHERE org_id = ?`, ORG_B);
+    const still = github();
+    still.app.world.installations[INST_B].suspended = true;
+    await quiet(() => runOrgJob(e, ORG_B, "reconcile", NOW, still.fetchImpl));
+    expect((await binding(ORG_B))!.suspended_at).not.toBeNull();
+    expect(still.app.seen.filter((x) => /\/app\/installations\/\d+$/.test(new URL(x.url).pathname))).toHaveLength(1);
+    expect(still.app.minted).toEqual([]);
+    // The unsuspend delivery never arrived; GitHub's answer lifts it, and the same unit reads through the App.
+    const lifted = github();
+    await quiet(() => runOrgJob(e, ORG_B, "reconcile", NOW, lifted.fetchImpl));
+    expect((await binding(ORG_B))!.suspended_at).toBeNull();
+    expect(auths(lifted.reads)).toEqual([`Bearer ${lifted.app.tokenFor(INST_B, "app")}`]);
+    expect(await all(env.DB, `SELECT actor, action FROM org_admin_audit WHERE org_id = ? AND action LIKE 'github.%'`, ORG_B)).toEqual([{ actor: "system", action: "github.unsuspend" }]);
+    // A live binding with no repository change pending costs the unit nothing extra.
+    const quietRun = github();
+    await quiet(() => runOrgJob(e, ORG_B, "reconcile", NOW, quietRun.fetchImpl));
+    expect(quietRun.app.seen.filter((x) => /\/app\/installations\/\d+$/.test(new URL(x.url).pathname) || new URL(x.url).pathname.startsWith("/installation/"))).toEqual([]);
+  });
+
+  it("a repository whose App access is lost is never minted for; the next complete list settles a mark the events left wrong", async () => {
+    await twoOrgs();
+    await run(env.DB, `UPDATE org_repos SET connection = 'app'`);
+    await setSecret(await adminB(), "github_token", "", TOKEN_B);
+    // An `added` then a `removed` of beta-co/app delivered the wrong way round: GitHub still lists it, Trov says lost.
+    await run(env.DB, `UPDATE org_repos SET access_lost_at = '2026-10-07T00:00:00.000Z' WHERE org_id = ?`, ORG_B);
+    await run(env.DB, `UPDATE org_github_installations SET repos_changed_at = '2026-10-07T00:00:00.000Z' WHERE org_id = ?`, ORG_B);
+    const gh = github();
+    const cred = await resolveGithubCredential(systemCtx(ORG_B), e, { repo: REPO_B, fetchImpl: gh.fetchImpl, now: NOW });
+    expect(cred?.source).toBe("token");
+    expect(gh.app.mints.filter((m) => m.installation === INST_B)).toEqual([]);
+    // The cron's unit re-reads the installation's list first: the mark is lifted and the flag cleared.
+    await quiet(() => runOrgJob(e, ORG_B, "reconcile", NOW, gh.fetchImpl));
+    expect(await first(env.DB, `SELECT connection, access_lost_at FROM org_repos WHERE org_id = ?`, ORG_B)).toEqual({ connection: "app", access_lost_at: null });
+    expect(await first(env.DB, `SELECT repos_changed_at FROM org_github_installations WHERE org_id = ?`, ORG_B)).toEqual({ repos_changed_at: null });
+    expect(auths(gh.reads)).toEqual([`Bearer ${gh.app.tokenFor(INST_B, "app")}`]);
+  });
+});
+
 describe("Org settings › the App's routes", () => {
   const J = async <T>(res: Response): Promise<T> => (await res.json()) as T;
   async function acme(): Promise<{ admin: string; member: string }> {

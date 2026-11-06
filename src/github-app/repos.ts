@@ -5,9 +5,9 @@
 import { GITHUB_REPO_LIST_MAX } from "@shared/github-app";
 import type { TenantContext } from "../data/sql";
 import type { Env } from "../env";
-import { listInstallationRepos, type InstallationRepo } from "./api";
+import { appCanSign, forgetInstallationToken, getInstallation, listInstallationRepos, type InstallationRepo } from "./api";
 import { resolveGithubCredential } from "./credential";
-import { allowedRepos, syncRepoAccess } from "./store";
+import { allowedRepos, clearReposChanged, endInstallation, liveInstallation, setInstallationSuspended, syncRepoAccess } from "./store";
 
 export interface VisibleRepos { repositories: InstallationRepo[]; total: number; truncated: boolean }
 export type VisibleReposResult = { ok: true; list: VisibleRepos } | { ok: false; reason: "not_connected" | "github_failed"; status?: number };
@@ -55,6 +55,48 @@ export async function visibleRepos(ctx: TenantContext, env: Env, opts: { fetchIm
   await gh.recordOutcome({ ok: true }, now);
   // A cut list cannot say a repository is gone — only a complete one re-marks.
   const mine = await reached(ctx, gh.installation, list);
-  if (!list.truncated) await syncRepoAccess(ctx, { visible: mine.repositories.map((r) => r.full_name) }).catch(() => undefined);
+  if (!list.truncated) {
+    await syncRepoAccess(ctx, { visible: mine.repositories.map((r) => r.full_name) })
+      .then(() => clearReposChanged(ctx, gh.installation!)).catch(() => undefined);
+  }
   return { ok: true, list: mine };
+}
+
+/** What `recheckInstallation` may cost: GitHub's word on the installation (1), and a complete repository list —
+ *  an installation-wide token's mint (1) and its pages (100 a page). The cron's reconcile unit budgets it
+ *  (src/repo/cron.ts `reconcileCost`). */
+export const INSTALLATION_RECHECK_COST = 1 + 1 + Math.ceil(GITHUB_REPO_LIST_MAX / 100);
+
+/**
+ * Heal what the App's webhook may have left wrong, from GitHub's own answers — the cron's reconcile unit calls this
+ * for each org before it reads (every six hours, so at most that often). TOTAL.
+ *   - a SUSPENDED binding: GitHub is asked whether it still is (`GET /app/installations/:id`) — a lost or
+ *     out-of-order unsuspend would otherwise keep the org off the App until an admin pressed Test connection. GitHub
+ *     no longer knowing the installation ends the binding (`not_found`), as Test connection does.
+ *   - a binding whose repositories changed by event since the last complete list (`repos_changed_at`): the list is
+ *     read again and every mark settled (`visibleRepos`), whatever order the events came in.
+ */
+export async function recheckInstallation(ctx: TenantContext, env: Env, opts: { fetchImpl?: typeof fetch; now?: number } = {}): Promise<void> {
+  try {
+    if (!appCanSign(env)) return;
+    const row = await liveInstallation(ctx);
+    if (!row) return;
+    const now = opts.now ?? Date.now();
+    if (row.suspended_at !== null) {
+      const info = await getInstallation(env, row.installation_id, opts.fetchImpl, now);
+      if (!info.ok) {
+        if (info.kind === "not_found") {
+          forgetInstallationToken(env, row.installation_id);
+          await endInstallation(ctx, row, "not_found");
+        }
+        return;
+      }
+      await setInstallationSuspended(ctx, row, info.installation.suspended_at !== null);
+      if (info.installation.suspended_at !== null) return;
+      forgetInstallationToken(env, row.installation_id);
+    }
+    if (row.repos_changed_at !== null) await visibleRepos(ctx, env, { fetchImpl: opts.fetchImpl, refresh: true, now });
+  } catch (e) {
+    console.error("github app", "recheck", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`);
+  }
 }

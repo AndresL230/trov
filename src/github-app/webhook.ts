@@ -40,6 +40,18 @@ const record = (v: unknown): Record<string, unknown> => (v && typeof v === "obje
 const names = (v: unknown): string[] =>
   (Array.isArray(v) ? v : []).map((r) => record(r).full_name).filter((n): n is string => typeof n === "string").slice(0, 500);
 
+/** An instant GitHub sent — an ISO string, or (some installation payloads) seconds since the epoch — as our ISO
+ *  form, so it compares with `suspension_at`; null when there is none. */
+function instant(v: unknown): string | null {
+  const ms = typeof v === "number" && Number.isFinite(v) ? (v < 1e12 ? v * 1000 : v) : typeof v === "string" ? Date.parse(v) : NaN;
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+/** When a suspend / unsuspend happened, by the delivery: a suspension's `suspended_at`, else the installation's
+ *  `updated_at`. null (no usable time) = applied as of now, unordered, as before 0091. */
+export function suspensionTime(installation: Record<string, unknown>, action: "suspend" | "unsuspend"): string | null {
+  return (action === "suspend" ? instant(installation.suspended_at) : null) ?? instant(installation.updated_at);
+}
+
 export async function handleGithubAppWebhook(request: Request, env: Env, opts?: DeliveryOpts): Promise<Response> {
   const rawBody = await request.text();
   const secret = env.GITHUB_APP_WEBHOOK_SECRET;
@@ -70,7 +82,10 @@ export async function handleGithubAppWebhook(request: Request, env: Env, opts?: 
         forgetInstallationToken(env, installationId);
         forgetRepoList(installationId);
       } else if (action === "suspend" || action === "unsuspend") {
-        for (const { ctx, row } of bound) await setInstallationSuspended(ctx, row, action === "suspend");
+        // Ordered by the change's own time: a suspend delivered after its unsuspend (or a redelivery of an old one)
+        // is older than what the row reflects and changes nothing (store.ts `setInstallationSuspended`).
+        const eventAt = suspensionTime(record(payload.installation), action);
+        for (const { ctx, row } of bound) await setInstallationSuspended(ctx, row, action === "suspend", eventAt);
         forgetInstallationToken(env, installationId);
       } else if (action === "new_permissions_accepted") {
         for (const { ctx, row } of bound) await notePermissionsAccepted(ctx, row);
