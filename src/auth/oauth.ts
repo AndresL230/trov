@@ -15,7 +15,7 @@
 // request acts in is decided per call, in src/data/bearer.ts, behind a live membership check.
 import { requirePlan } from "../plans/gate";
 import { type PlatformContext, all, first, run, stmt, batch } from "../data/platform-sql";
-import { type TenantContext, first as tenantFirst, run as tenantRun } from "../data/sql";
+import { type TenantContext, first as tenantFirst, run as tenantRun, stmt as tenantStmt, batch as tenantBatch } from "../data/sql";
 import { randomToken, sha256Hex, pkceChallenge } from "./crypto";
 import { MCP_INVALID_TOKEN_HINT, MCP_UNAUTHORIZED_HINT } from "@shared/error-hints";
 import type { OAuthGrantSummary } from "@shared/rows";
@@ -232,17 +232,25 @@ export async function issueAuthorization(
   const allowed = [ctx, ...(a.orgs ?? [])].filter((o, i, list) => list.findIndex((x) => x.orgId === o.orgId) === i);
   if (allowed.some((o) => o.userId.toLowerCase() !== ctx.userId.toLowerCase())) throw new Error("issueAuthorization: every organization must be the same person's");
   for (const o of allowed) await requirePlan(o, "agent_connections");
-  const g = await tenantRun(ctx, `INSERT INTO oauth_grants (org_id, person, client_id, client_name, created_at, mode) VALUES (?, ?, ?, ?, ?, 'manual')`,
-    ctx.orgId, ctx.userId, a.client.client_id, a.client.client_name, iso(a.nowMs));
-  const grantId = Number(g.meta.last_row_id);
-  for (const o of allowed) await holdGrant(o, grantId, a.nowMs);
   const code = randomToken(32);
-  await tenantRun(ctx,
-    `INSERT INTO oauth_codes (org_id, code_hash, client_id, person, grant_id, redirect_uri, code_challenge, resource, created_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ctx.orgId, await sha256Hex(code), a.client.client_id, ctx.userId, grantId, a.params.redirect_uri, a.params.code_challenge,
-    a.params.resource, iso(a.nowMs), iso(a.nowMs + CODE_TTL_MS));
-  return { code, grantId };
+  const codeHash = await sha256Hex(code);
+  // ONE batch: the grant, its code (which takes the grant's id from `last_insert_rowid()`, the statement right
+  // after it) and a row per organization (each takes the id from that code, by its hash) — all of it, or
+  // nothing: never a connection with no code to finish it, or one that reaches fewer organizations than consented.
+  const res = await tenantBatch(ctx, [
+    tenantStmt(ctx, `INSERT INTO oauth_grants (org_id, person, client_id, client_name, created_at, mode) VALUES (?, ?, ?, ?, ?, 'manual')`,
+      ctx.orgId, ctx.userId, a.client.client_id, a.client.client_name, iso(a.nowMs)),
+    tenantStmt(ctx,
+      `INSERT INTO oauth_codes (org_id, code_hash, client_id, person, grant_id, redirect_uri, code_challenge, resource, created_at, expires_at)
+       VALUES (?, ?, ?, ?, last_insert_rowid(), ?, ?, ?, ?, ?)`,
+      ctx.orgId, codeHash, a.client.client_id, ctx.userId, a.params.redirect_uri, a.params.code_challenge,
+      a.params.resource, iso(a.nowMs), iso(a.nowMs + CODE_TTL_MS)),
+    ...allowed.map((o) => tenantStmt(o,
+      `INSERT OR IGNORE INTO oauth_grant_orgs (org_id, grant_id, person, added_at)
+       SELECT ?, c.grant_id, ?, ? FROM oauth_codes c WHERE c.org_id = ? AND c.code_hash = ?`,
+      o.orgId, o.userId, iso(a.nowMs), ctx.orgId, codeHash)),
+  ]);
+  return { code, grantId: Number(res[0].meta.last_row_id) };
 }
 
 /** Consent given to a connection that FOLLOWS THE REPOSITORY: the grant is the person's and no
@@ -524,12 +532,20 @@ export async function revokeGrant(p: PlatformContext, handle: string, id: number
   return res.meta.changes > 0;
 }
 
-/** The repo cron's 6-hourly :30 tick. D1 only. Grants are never deleted. */
+/** The repo cron's 6-hourly :30 tick. D1 only. Grants are never deleted — but an ABANDONED consent is revoked
+ *  (`revoked_reason` `abandoned`): a grant written at consent whose code was never exchanged (the app never came
+ *  back for its tokens). Past the hour a spent code is kept, a grant that holds no token at all and was never used
+ *  can never get one — a code lives 60 s and a refresh needs a token — yet it would sit in Settings › Connected
+ *  apps and take one of its person's agent connections in each organization it names (plans.md). Revoking it
+ *  drops those rows (the `oauth_grants_revoked_au` trigger). */
 export async function pruneOAuth(p: PlatformContext, nowMs: number): Promise<void> {
   const hourAgo = iso(nowMs - 60 * 60 * 1000);
   const dayAgo = iso(nowMs - 24 * 60 * 60 * 1000);
   const ungrantedClientCutoff = iso(nowMs - UNGRANTED_CLIENT_TTL_MS);
   await batch(p, [
+    stmt(p, `UPDATE oauth_grants SET revoked_at = ?1, revoked_reason = 'abandoned'
+              WHERE revoked_at IS NULL AND last_used_at IS NULL AND created_at < ?2
+                AND NOT EXISTS (SELECT 1 FROM oauth_tokens t WHERE t.grant_id = oauth_grants.id)`, iso(nowMs), hourAgo),
     stmt(p, `DELETE FROM oauth_codes WHERE expires_at < ? OR used_at < ?`, hourAgo, hourAgo),
     stmt(p, `DELETE FROM oauth_tokens WHERE kind = 'access' AND expires_at < ?`, dayAgo),
     stmt(p, `DELETE FROM oauth_tokens WHERE kind = 'refresh' AND expires_at < ?`, iso(nowMs)),

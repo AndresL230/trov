@@ -63,8 +63,9 @@ const uidMismatch = (known: IdentityRow, profile: ProviderProfile): boolean =>
  * 3 otherwise → onboard: any GitHub account, any Google account (its address is verified — the contract
  *   below; an unverified one never reaches this function).
  * The one refusal left is in branch 1: a login on file under a DIFFERENT provider account id.
- * Onboarding creates a PERSON, never a membership: a new person is in no org until they accept an invite
- * or create one (the one exception is a legacy invite — POST /auth/onboard).
+ * Onboarding creates a PERSON (and their Sample workspace — POST /auth/onboard), never a membership of a real
+ * org: a new person is in none until they accept an invite or create one. (The legacy invite that once joined
+ * them at onboarding went with its table in 0085.)
  *
  * Contract: `profile.email` MUST already be provider-verified by the CALLER before this
  * runs (GitHub: the primary + verified address from `GET /user/emails`; Google:

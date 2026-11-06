@@ -3,6 +3,7 @@ import { env } from "cloudflare:test";
 import { app } from "../src/routes";
 import { first, all } from "./helpers/db";
 import { sealOnboard, ONBOARD_COOKIE, type OnboardPayload } from "../src/auth/onboard";
+import { createPersonWithIdentity, HandleTakenError, IdentityTakenError } from "../src/auth/persons";
 import type { PersonRow, IdentityRow } from "@shared/rows";
 
 import { platformCtx } from "./helpers/tenant";
@@ -79,5 +80,26 @@ describe("POST /auth/onboard", () => {
     expect(replay.headers.get("set-cookie") ?? "").toMatch(/onboard=;|onboard=.*Max-Age=0/);
     const rows = await all<PersonRow>(env.DB, `SELECT handle FROM persons WHERE handle IN ('replaydev','replaydev2')`);
     expect(rows).toEqual([{ handle: "replaydev" }]);
+  });
+});
+
+describe("createPersonWithIdentity — the person and their sign-in are one batch", () => {
+  const person = (handle: string) => ({ handle, name: "Race", color: "sky" as const, avatar_url: null, avatar_source: "github" as const, email: null });
+  const sign = { provider: "github" as const, subject: "race-dev", label: "race-dev", verifiedEmail: null, providerUid: "42" };
+
+  it("a replay that raced past the pre-check (the sign-in is linked already) writes no person at all", async () => {
+    await env.DB.prepare(`INSERT INTO identities (provider, subject, label, person, linked_at, linked_by) VALUES ('github', 'race-dev', 'race-dev', 'AndresL230', '2026-10-01T00:00:00Z', 'seed')`).run();
+    await expect(createPersonWithIdentity(platformCtx(), person("racedev2"), sign)).rejects.toBeInstanceOf(IdentityTakenError);
+    expect(await first(env.DB, `SELECT handle FROM persons WHERE handle = 'racedev2'`)).toBeNull();
+  });
+
+  it("a handle taken in the meantime writes no identity", async () => {
+    await expect(createPersonWithIdentity(platformCtx(), person("andresl230"), sign)).rejects.toBeInstanceOf(HandleTakenError);
+    expect(await first(env.DB, `SELECT person FROM identities WHERE provider = 'github' AND subject = 'race-dev'`)).toBeNull();
+  });
+
+  it("otherwise both, the identity naming the new person", async () => {
+    await createPersonWithIdentity(platformCtx(), person("racedev"), sign);
+    expect(await first(env.DB, `SELECT person, linked_by, provider_uid FROM identities WHERE provider = 'github' AND subject = 'race-dev'`)).toEqual({ person: "racedev", linked_by: "racedev", provider_uid: "42" });
   });
 });

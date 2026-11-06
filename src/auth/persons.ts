@@ -172,11 +172,41 @@ export async function createPerson(p: PlatformContext, n: { handle: string; name
   return (await getPerson(p, n.handle))!;
 }
 
+type IdentityLink = { provider: IdentityProvider; subject: string; label: string; person: string; linkedBy: string; verifiedEmail?: string | null; providerUid?: string | null };
+const linkIdentityStmt = (p: PlatformContext, i: IdentityLink) =>
+  stmt(p, `INSERT INTO identities (provider, subject, label, person, linked_at, linked_by, verified_email, provider_uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    i.provider, i.subject, i.label, i.person, nowIso(), i.linkedBy, i.verifiedEmail ? i.verifiedEmail.trim().toLowerCase() : null, i.providerUid ?? null);
+
 /** `verifiedEmail` is the address the provider asserted as verified at this sign-in, or absent / null;
  *  `providerUid` the account's immutable id where the subject is not one (GitHub — 0042_organizations). */
-export async function linkIdentity(p: PlatformContext, i: { provider: IdentityProvider; subject: string; label: string; person: string; linkedBy: string; verifiedEmail?: string | null; providerUid?: string | null }): Promise<void> {
-  await run(p, `INSERT INTO identities (provider, subject, label, person, linked_at, linked_by, verified_email, provider_uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    i.provider, i.subject, i.label, i.person, nowIso(), i.linkedBy, i.verifiedEmail ? i.verifiedEmail.trim().toLowerCase() : null, i.providerUid ?? null);
+export async function linkIdentity(p: PlatformContext, i: IdentityLink): Promise<void> {
+  await batch(p, [linkIdentityStmt(p, i)]);
+}
+
+/** The sign-in this onboarding was sealed for is linked to a person already (a replayed onboard cookie). */
+export class IdentityTakenError extends Error {
+  constructor() { super("identity already linked"); }
+}
+
+/**
+ * Onboarding (POST /auth/onboard): the new person AND the sign-in that names them, in ONE batch — a person row
+ * with no identity (nobody could ever sign in as it) cannot be left behind by a replay racing this one. A
+ * collision on either is told apart afterwards: the identity is linked already → `IdentityTakenError`; else the
+ * handle was taken → `HandleTakenError`.
+ */
+export async function createPersonWithIdentity(p: PlatformContext, n: Parameters<typeof createPerson>[1], i: Omit<IdentityLink, "person" | "linkedBy">): Promise<void> {
+  const now = nowIso();
+  try {
+    await batch(p, [
+      stmt(p, `INSERT INTO persons (handle, name, color, avatar_url, avatar_source, email, email_unsubscribed, created_at, onboarded_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+        n.handle, n.name, n.color, n.avatar_url, n.avatar_url ? n.avatar_source ?? null : null, n.email, now, now),
+      linkIdentityStmt(p, { ...i, person: n.handle, linkedBy: n.handle }),
+    ]);
+  } catch (e) {
+    if (!/UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e))) throw e;
+    if (await findIdentity(p, i.provider, i.subject)) throw new IdentityTakenError();
+    throw new HandleTakenError(n.handle);
+  }
 }
 
 /** Pin an identity to the provider account that just signed in with it (0042_organizations) — once: a row that already

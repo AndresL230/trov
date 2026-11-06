@@ -15,7 +15,9 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   the callback, `/?denied=unverified`, before the fork). The fork: known identity → session (denied only when
   the login is on file under a different provider account id); verified email matches a person → link +
   session; anyone else → onboarding (a sealed 10-minute `onboard` cookie; the person row is created only on
-  `POST /auth/onboard` with handle + color). Onboarding also gives the new person their **Sample workspace** — an org
+  `POST /auth/onboard` with handle + color, in ONE batch with the identity that names them —
+  `createPersonWithIdentity`: a replayed cookie racing the first POST writes nothing, never a person no one can
+  sign in as; 409 `already_onboarded` / `handle_taken` say which collided). Onboarding also gives the new person their **Sample workspace** — an org
   they own, full of made-up content, and so an org the MCP consent screen can offer (`organizations.md` › 1e); it is
   their only membership until they create a real org or accept an invitation, and a failure to make it never blocks
   sign-in. Link mode (`?link=1` with a session) attaches a second provider in
@@ -111,7 +113,9 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   authorize URL (now the sign-in page; the request rides the `oauth_pending` cookie as on a first visit). The POST binds every ticked slug through `resolveTenant`; one it cannot bind
   refuses the whole consent, and a missing tick or start re-renders the page with the reason. A form with no
   `mode` (the page from before 0051) is a manual connection to its one `org`. `issueAuthorization` /
-  `issueRepoAuthorization` write the grant;
+  `issueRepoAuthorization` write the grant — a manual one in ONE batch with its code and a row per organization
+  consented to (the code takes the grant's id from `last_insert_rowid()`, each org row from the code by its hash),
+  so a connection never exists without the code that finishes it or with fewer organizations than consented;
   access 1 h; refresh tokens rotate with a 60 s reuse interval — a reuse past that window revokes the
   whole grant — and a rotated refresh token is kept until its OWN expiry (90 days idle), so a late reuse
   is still caught. Sign-in from
@@ -121,7 +125,9 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   codes, access tokens a day past expiry, refresh tokens past expiry, and client registrations that never
   got a grant after 90 days (`UNGRANTED_CLIENT_TTL_MS` — long enough that a person who abandons authorize
   still finds their registration on a retry days later) — grants themselves are never
-  deleted. An unknown `client_id` at authorize is an error PAGE naming the fix in Claude Code (`/mcp` → trov
+  deleted. An ABANDONED consent — a grant over an hour old that was never used and holds no token at all (its
+  60-second code was never exchanged, so it can never mint one) — is revoked there, `revoked_reason`
+  `abandoned`: it leaves Connected apps and gives back its agent-connection slots (`plans.md`). An unknown `client_id` at authorize is an error PAGE naming the fix in Claude Code (`/mcp` → trov
   → Clear authentication → Authenticate), Codex (`codex mcp login trov`) and ChatGPT (delete the app, add it
   again), never a silent redirect. Every OAuth endpoint answers an unexpected error
   with `503 { error: "temporarily_unavailable" }` (the authorize pages with a 503 error page), never a 500.
