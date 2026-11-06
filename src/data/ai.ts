@@ -124,9 +124,11 @@ export const reviewRef = {
   doc: (slug: string, version: number): string => `doc:${slug}@${version}`,
   adr: (id: number): string => `adr:${id}`,
 } as const;
-export function supersedeOpenSuggestions(ctx: TenantContext, itemType: string, itemRef: string): Stmt {
-  return stmt(ctx, `UPDATE ai_suggestions SET state = 'superseded' WHERE org_id = ? AND item_type = ? AND item_ref = ? AND state = 'open'`,
-    ctx.orgId, itemType, itemRef);
+/** `guard` (optional): a condition the statement runs under inside its batch — `promote_doc` closes the risk only if
+ *  its own compare-and-set applied. */
+export function supersedeOpenSuggestions(ctx: TenantContext, itemType: string, itemRef: string, guard?: { sql: string; params: unknown[] }): Stmt {
+  return stmt(ctx, `UPDATE ai_suggestions SET state = 'superseded' WHERE org_id = ? AND item_type = ? AND item_ref = ? AND state = 'open'${guard ? ` AND ${guard.sql}` : ""}`,
+    ctx.orgId, itemType, itemRef, ...(guard?.params ?? []));
 }
 
 /** Undo an accept whose handler failed: back to open, only if it is still the accept `by` just made. */

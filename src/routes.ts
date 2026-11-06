@@ -31,7 +31,7 @@ import {
   TicketCreate, TicketEdit, TicketTransition, TicketMove, TicketAssigneeToggle, TicketLinkAdd,
   TicketSprintSet, TicketParentSet, TicketCommentAdd, TicketSeg, TicketAssigneeFilter, TicketCategory,
 } from "@shared/tickets";
-import { promote_doc, DocArchivedError, ratify_adr, reject_doc_version, reject_adr, resolve_triage, restore_triage, TriageRestoreError, assign_triage, map_identity, discard_identity_task, restore_identity_task, IdentityTaskError, type AssignType } from "./tools/writes";
+import { promote_doc, DocArchivedError, DocStaleVersionError, ratify_adr, reject_doc_version, reject_adr, resolve_triage, restore_triage, TriageRestoreError, assign_triage, map_identity, discard_identity_task, restore_identity_task, IdentityTaskError, type AssignType } from "./tools/writes";
 import {
   create_sprint, set_sprint_active, complete_sprint, add_sprint_resource, delete_sprint, list_sprints, get_sprint,
   SprintError, SPRINT_ERROR_STATUS,
@@ -655,7 +655,8 @@ tenant.post("/docs/propose", async (c) => {
   return c.json({ ok: true, proposal, slug, ...(result.parent_ignored ? { parent_ignored: result.parent_ignored } : {}) });
 });
 
-// Human confirmation (session-gated): promote a staged doc version into the live doc.
+// Human confirmation (session-gated): promote a staged doc version into the live doc. 409 `archived` (the page is
+// archived) or `stale` (the version is not newer than the live one: approving it would roll the page back).
 tenant.post("/doc/:slug/promote", async (c) => {
   const body = await c.req.json().catch(() => null);
   const version = Number(body?.version);
@@ -664,7 +665,7 @@ tenant.post("/doc/:slug/promote", async (c) => {
     const res = await promote_doc(c.var.ctx, c.req.param("slug"), version, c.get("principal").handle);
     return c.json({ ok: true, ...res });
   } catch (e) {
-    if (e instanceof DocArchivedError) return c.json({ error: e.code, message: e.message }, 409);
+    if (e instanceof DocArchivedError || e instanceof DocStaleVersionError) return c.json({ error: e.code, message: e.message }, 409);
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });

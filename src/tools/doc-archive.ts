@@ -15,7 +15,7 @@
 import { planArchive, planRestore } from "@shared/docs-tree-core";
 import type { DocArchiveErrorCode, DocArchiveResult, DocRestoreResult, DocTreePlace } from "@shared/docs-core";
 import { batch, first, nowIso, stmt, type Stmt, type TenantContext } from "../data/sql";
-import { isPageArchiver, placeStmt, spaceNodes } from "./doc-tree";
+import { isPageArchiver, placeStmt, spaceNodes, type StmtGuard } from "./doc-tree";
 import { spaceState } from "./spaces";
 
 /** A refused archive or restore. `message` is fixed text naming the rule. */
@@ -47,12 +47,16 @@ export async function archiveDoc(ctx: TenantContext, slug: string): Promise<DocA
   const plan = planArchive(await spaceNodes(ctx, row.space), slug);
   const at = nowIso();
   const places: DocTreePlace[] = plan?.places ?? [];
+  // Guarded: a second archive racing this one changes nothing. The children's moves come FIRST in the batch and run
+  // only while the page is still in the Library, then the archive itself — so when another archive got there first,
+  // nothing in this batch applies (its own plan moved the children already).
+  const stillHere: StmtGuard = { sql: `EXISTS (SELECT 1 FROM docs pa WHERE pa.org_id = ? AND pa.slug = ? AND pa.archived_at IS NULL)`, params: [ctx.orgId, slug] };
   const stmts: Stmt[] = [
-    // Guarded: a second archive racing this one changes nothing.
+    ...places.map((p) => placeStmt(ctx, p.slug, p.parent_slug, p.tree_rank, stillHere)),
     stmt(ctx, `UPDATE docs SET archived_at = ?, archived_by = ? WHERE org_id = ? AND slug = ? AND archived_at IS NULL`, at, ctx.userId, ctx.orgId, slug),
-    ...places.map((p) => placeStmt(ctx, p.slug, p.parent_slug, p.tree_rank)),
   ];
-  await batch(ctx, stmts);
+  const res = await batch(ctx, stmts);
+  if ((res[res.length - 1].meta.changes ?? 0) === 0) throw new DocArchiveError("archived", 409, "this page is already archived");
   return { ok: true, slug, archived_at: at, parent_slug: plan?.parent_slug ?? null, places };
 }
 
@@ -63,14 +67,17 @@ export async function restoreDoc(ctx: TenantContext, slug: string): Promise<DocR
   if (!row.archived_at) throw new DocArchiveError("not_archived", 409, "this page is not archived");
   const plan = planRestore(await spaceNodes(ctx, row.space), { slug, space: row.space }, row.parent_slug);
   const places: DocTreePlace[] = [{ slug, parent_slug: plan.parent_slug, tree_rank: plan.tree_rank }];
-  const stmts: Stmt[] = [
-    stmt(ctx, `UPDATE docs SET archived_at = NULL, archived_by = NULL, parent_slug = ?, tree_rank = ? WHERE org_id = ? AND slug = ? AND archived_at IS NOT NULL`,
-      plan.parent_slug, plan.tree_rank, ctx.orgId, slug),
-  ];
+  // The same order as archive: the siblings' renumber runs only while the page is still archived (this restore is the
+  // one that applies), then the restore itself — a second restore racing this one changes nothing.
+  const stmts: Stmt[] = [];
   for (const [s, r] of plan.renumber ?? []) {
-    stmts.push(stmt(ctx, `UPDATE docs SET tree_rank = ? WHERE org_id = ? AND slug = ? AND archived_at IS NULL`, r, ctx.orgId, s));
+    stmts.push(stmt(ctx, `UPDATE docs SET tree_rank = ? WHERE org_id = ? AND slug = ? AND archived_at IS NULL
+                           AND EXISTS (SELECT 1 FROM docs pa WHERE pa.org_id = ? AND pa.slug = ? AND pa.archived_at IS NOT NULL)`, r, ctx.orgId, s, ctx.orgId, slug));
     places.push({ slug: s, parent_slug: plan.parent_slug, tree_rank: r });
   }
-  await batch(ctx, stmts);
+  stmts.push(stmt(ctx, `UPDATE docs SET archived_at = NULL, archived_by = NULL, parent_slug = ?, tree_rank = ? WHERE org_id = ? AND slug = ? AND archived_at IS NOT NULL`,
+    plan.parent_slug, plan.tree_rank, ctx.orgId, slug));
+  const res = await batch(ctx, stmts);
+  if ((res[res.length - 1].meta.changes ?? 0) === 0) throw new DocArchiveError("not_archived", 409, "this page is not archived");
   return { ok: true, slug, parent_slug: plan.parent_slug, tree_rank: plan.tree_rank, places };
 }

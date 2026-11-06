@@ -6,7 +6,7 @@ import type { IngestPayload, FeedEntry, DocProposal, AdrDraft, CapturedEvent } f
 import { isSection, SECTIONS } from "@shared/vocabulary";
 import { TROV_SYSTEM_HANDLE } from "@shared/ai-core";
 import type { DocRow, DocVersionRow, AdrRow, ProcessedItemRow } from "@shared/rows";
-import { type TenantContext, first, run, nowIso } from "./data/sql";
+import { type TenantContext, type Stmt, first, run, stmt, nowIso } from "./data/sql";
 import type { PlatformContext } from "./data/platform-sql";
 import { append_feed, propose_doc_update, stage_adr, route_triage, ensure_identity_task } from "./tools/writes";
 import { contentHash } from "./hash";
@@ -100,7 +100,8 @@ async function ledgerRecord(
   outcome: string,
   ref: string | null
 ): Promise<void> {
-  // INSERT OR IGNORE: the PK guards against a double-record under a race.
+  // INSERT OR IGNORE: the PK guards against a double-record under a race. (Only for an outcome that wrote nothing —
+  // `unchanged`; a write records its ledger row IN its own batch, `ledgerStmt` below.)
   await run(
     ctx,
     `INSERT OR IGNORE INTO processed_items (org_id, session_id, item_index, item_type, outcome, ref, created_at)
@@ -113,6 +114,40 @@ async function ledgerRecord(
     ref,
     nowIso()
   );
+}
+
+/** Where a ledger row's `ref` comes from: the row the same batch just wrote, as the org's newest of its table. */
+const LEDGER_REF = {
+  feed: `SELECT CAST(MAX(r.id) AS TEXT) FROM feed r WHERE r.org_id = ?`,
+  adr: `SELECT CAST(MAX(r.id) AS TEXT) FROM adrs r WHERE r.org_id = ?`,
+  // `<slug>@<version>`: the slug's highest version, the one just staged.
+  doc: `SELECT ? || '@' || MAX(r.version) FROM doc_versions r WHERE r.org_id = ? AND r.slug = ?`,
+} as const;
+
+/**
+ * The ledger row of an item the gate WRITES, as a statement for the write's own batch (the writers' `extra`): the item
+ * and its record land together or not at all, so a crash between them can no longer leave an item written but
+ * unrecorded (written again on the retry). A PLAIN insert, not OR IGNORE: when the same item is being written
+ * concurrently, the second batch fails on the primary key and rolls back whole — `writeOnce` reads that as a replay.
+ */
+function ledgerStmt(ctx: TenantContext, ledger: LedgerRef, item_type: ProcessedItemRow["item_type"], outcome: string, ref: { sql: string; params: unknown[] } | null): Stmt {
+  return stmt(
+    ctx,
+    `INSERT INTO processed_items (org_id, session_id, item_index, item_type, outcome, ref, created_at)
+     VALUES (?, ?, ?, ?, ?, ${ref ? `(${ref.sql})` : "NULL"}, ?)`,
+    ctx.orgId, ledger.sessionId, ledger.itemIndex, item_type, outcome, ...(ref?.params ?? []), nowIso()
+  );
+}
+
+/** Run a gated write whose batch carries its ledger row. When the batch fails and the ledger now holds the item, a
+ *  concurrent run of the same item won: nothing of this one was written (the batch rolled back) — a replay. */
+async function writeOnce<T>(ctx: TenantContext, ledger: LedgerRef | undefined, write: () => Promise<T>): Promise<{ ok: true; value: T } | { ok: false }> {
+  try {
+    return { ok: true, value: await write() };
+  } catch (e) {
+    if (ledger && (await ledgerLookup(ctx, ledger))) return { ok: false };
+    throw e;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +174,8 @@ export async function ingestFeedEntry(ctx: TenantContext, entry: FeedEntry, auth
   if (ledger && (await ledgerLookup(ctx,ledger))) return { outcome: "unchanged" };
 
   const tags = await sortAgentTags(ctx, entry.tags);
-  const id = await append_feed(ctx,{
+  // The entry, its tags and its ledger row: one batch.
+  const w = await writeOnce(ctx, ledger, () => append_feed(ctx, {
     author,
     summary: entry.summary,
     brief: entry.brief,
@@ -147,10 +183,11 @@ export async function ingestFeedEntry(ctx: TenantContext, entry: FeedEntry, auth
     artifacts: entry.artifacts,
     tags: tags.known,
     ...(ai ? { ai } : {}),
-  });
+  }, ledger ? [ledgerStmt(ctx, ledger, "feed", "written", { sql: LEDGER_REF.feed, params: [ctx.orgId] })] : []));
+  if (!w.ok) return { outcome: "unchanged" };
+  const id = w.value;
   // Trov never SUGGESTS a tag: a tag of its entry that is not on the org's list is dropped, not sent to the admins.
   if (!ai) await recordTagSuggestions(ctx, tags.suggested, { type: "feed", id: String(id) }, author);
-  if (ledger) await ledgerRecord(ctx,ledger, "feed", "written", String(id));
   // An entry Trov wrote is ABOUT its subject: their brief is what it makes stale (never `person:trov` when known).
   await routeAi(ctx, { type: "feed_ingested", id, author: ai ? (ai.subject ?? author) : author });
   return {
@@ -193,15 +230,28 @@ export async function ingestDocProposal(ctx: TenantContext, proposal: DocProposa
     return { outcome: "refused", slug: proposal.slug, code: "section", reason: `unknown section "${proposal.section}": a doc's section is one of ${DOC_SECTIONS}` };
   }
 
-  const existing = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, proposal.slug);
+  const row = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, proposal.slug);
   const lowConf = proposal.confidence === "low";
 
   // An ARCHIVED page (0083_doc_archive) takes nothing from a proposal — no version, no parent, no restore: only a
   // person archives and restores (cookie routes). Refused, saying so. Its slug stays reserved, so a "new" page with
   // that slug is refused too.
-  if (existing?.archived_at) {
+  if (row?.archived_at) {
     return { outcome: "refused", slug: proposal.slug, code: "archived_page", reason: `"${proposal.slug}" is an archived page: it takes no proposal and its name stays reserved. A person restores it in the Library; for a new page, use another slug` };
   }
+
+  // The version still WAITING on the page: staged and newer than the live one. An older staged version is stale — what
+  // a promote leaves behind is `superseded`, but one may predate that (0088) — and is neither compared nor counted.
+  const pending = row
+    ? await first<DocVersionRow>(ctx,
+      `SELECT * FROM doc_versions WHERE org_id = ? AND slug = ? AND status = 'staged' AND version > ? ORDER BY version DESC LIMIT 1`,
+      ctx.orgId, proposal.slug, row.current_version)
+    : null;
+  // An EMPTY SHELL — a page never approved whose every version was rejected (src/tools/spaces.ts `inLibrary`) — is no
+  // page: it is in no list and holds no slug, so this proposal takes the row over as a NEW page (its space, section,
+  // title, owner and place are this proposal's). Its rejected versions stay, under the new one.
+  const revive = !!row && row.current_version === 0 && !pending;
+  const existing = revive ? null : row;
 
   // The space (0081_docs_library): an alias resolves (`technical` → `engineering`), then a space that was SENT
   // must be a live space of the org — an unknown or archived one is refused, never guessed. With none sent,
@@ -223,19 +273,13 @@ export async function ingestDocProposal(ctx: TenantContext, proposal: DocProposa
 
   const hash = await contentHash(proposal.body);
 
-  // No-op dedupe (existing slug): identical to the promoted body OR the latest
-  // staged body means there is nothing new to stage — drop, unless `force`.
+  // No-op dedupe (existing slug): identical to the promoted body OR the version still waiting (the newest staged one
+  // NEWER than the live version — never a stale one) means there is nothing new to stage — drop, unless `force`.
   if (existing) {
     const promotedBody = existing.current_version > 0 ? existing.body : null;
     const promotedHash = promotedBody !== null ? await contentHash(promotedBody) : null;
-    const latestStaged = await first<DocVersionRow>(
-      ctx,
-      `SELECT * FROM doc_versions WHERE org_id = ? AND slug = ? AND status = 'staged' ORDER BY version DESC LIMIT 1`,
-      ctx.orgId,
-      proposal.slug
-    );
-    const latestStagedHash = latestStaged ? (latestStaged.content_hash ?? (await contentHash(latestStaged.body))) : null;
-    if (!proposal.force && (hash === promotedHash || hash === latestStagedHash)) {
+    const pendingHash = pending ? (pending.content_hash ?? (await contentHash(pending.body))) : null;
+    if (!proposal.force && (hash === promotedHash || hash === pendingHash)) {
       if (ledger) await ledgerRecord(ctx,ledger, "doc", "unchanged", proposal.slug);
       return { outcome: "unchanged", slug: proposal.slug };
     }
@@ -263,7 +307,8 @@ export async function ingestDocProposal(ctx: TenantContext, proposal: DocProposa
     else parent_ignored = { parent_slug: proposal.parent_slug.trim(), reason: chk.reason };
   }
 
-  const res = await propose_doc_update(
+  // The version and its ledger row: one batch (the writer's `extra`).
+  const w = await writeOnce(ctx, ledger, () => propose_doc_update(
     ctx,
     {
       slug: proposal.slug,
@@ -281,10 +326,13 @@ export async function ingestDocProposal(ctx: TenantContext, proposal: DocProposa
       tree_rank: parent?.tree_rank ?? null,
       import_id: opts?.importId ?? null,
       import_path: opts?.importPath ?? null,
+      revive,
     },
-    author
-  );
-  if (ledger) await ledgerRecord(ctx,ledger, "doc", "staged", `${res.slug}@${res.version}`);
+    author,
+    ledger ? [ledgerStmt(ctx, ledger, "doc", "staged", { sql: LEDGER_REF.doc, params: [proposal.slug, ctx.orgId, proposal.slug] })] : []
+  ));
+  if (!w.ok) return { outcome: "unchanged" };
+  const res = w.value;
   await routeAi(ctx, { type: "proposal_staged", ref: `doc:${res.slug}:${res.version}` });
   return { outcome: "written", ...res, change_kind, base_version, low_confidence: lowConf, ...(parent_ignored ? { parent_ignored } : {}) };
 }
@@ -306,8 +354,11 @@ export async function ingestAdrDraft(ctx: TenantContext, draft: AdrDraft, author
     return { outcome: "unchanged", id: dup.id };
   }
 
-  const id = await stage_adr(ctx,draft, author, hash);
-  if (ledger) await ledgerRecord(ctx,ledger, "adr", "staged", String(id));
+  // The draft and its ledger row: one batch.
+  const w = await writeOnce(ctx, ledger, () => stage_adr(ctx, draft, author, hash,
+    ledger ? [ledgerStmt(ctx, ledger, "adr", "staged", { sql: LEDGER_REF.adr, params: [ctx.orgId] })] : []));
+  if (!w.ok) return { outcome: "unchanged" };
+  const id = w.value;
   await routeAi(ctx, { type: "proposal_staged", ref: `adr:${id}` });
   return { outcome: "written", id };
 }
@@ -479,9 +530,11 @@ export async function consume(ctx: TenantContext, payload: IngestPayload, princi
       result.triage.unchanged++;
       continue;
     }
-    await route_triage(ctx,{ raw: item.raw, reason: item.reason, source_author: author });
-    await ledgerRecord(ctx,ledger, "triage", "triaged", null);
-    result.triage.recorded++;
+    // The queue row and its ledger row: one batch.
+    const w = await writeOnce(ctx, ledger, () => route_triage(ctx, { raw: item.raw, reason: item.reason, source_author: author },
+      [ledgerStmt(ctx, ledger, "triage", "triaged", null)]));
+    if (w.ok) result.triage.recorded++;
+    else result.triage.unchanged++;
   }
 
   return result;

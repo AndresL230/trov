@@ -24,7 +24,7 @@ describe("promote_doc", () => {
 
     const v1 = await first<DocVersionRow>(env.DB, `SELECT * FROM doc_versions WHERE slug = ? AND version = 1`, "architecture");
     const v2 = await first<DocVersionRow>(env.DB, `SELECT * FROM doc_versions WHERE slug = ? AND version = 2`, "architecture");
-    expect(v1?.status).toBe("staged");   // prior version intact, untouched
+    expect(v1?.status).toBe("superseded"); // the older version still waiting is stale now (0088) — its row and body intact
     expect(v1?.body).toBe("# v1");
     expect(v2?.status).toBe("promoted");
   });

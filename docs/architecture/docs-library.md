@@ -42,13 +42,23 @@ as a value): `SPACE_ALIASES` / `resolveSpaceAlias`, `DEFAULT_SPACE`, `STARTER_SP
 - **Order** is A to Z by name (`spaceOrder`: case and accents aside, then oldest, then slug), so a rename moves a
   space to its new place. Nobody sets an org order — there is no move route and no Position field; `sort_rank` is
   still written (`rankAfterAll`) but orders nothing. Each person shapes their own view of it (below).
-- **Archive is soft** (`archived_at` / `archived_by`): the space leaves the Library, the sidebar and `list_spaces`,
+- **Archive is soft** (`archived_at` / `archived_by`, guarded on `archived_at IS NULL` with its audit row written only
+  while the space is live — a second archive racing changes nothing): the space leaves the Library, the sidebar and `list_spaces`,
   and takes no NEW page (the gate refuses a proposal that names it, listing the live spaces; the New page route
   refuses it). Its pages stay —
   readable by link, searchable, and an edit of one still stages in its own space. An admin restores it.
 - **Statuses** in every list come from the query engine's authority flags (`pageAuthority`): `live` (no mark),
   `staged_pending` ("Change pending review"), `unpromoted` ("Not yet approved"). A space's `waiting` counts its pages
   that are not live.
+- **An empty shell is no page** (#211). A page that was never approved and whose every version was rejected keeps its
+  `docs` row (its versions are soft and stay, and they reference it) but is NOT in the Library: `src/tools/spaces.ts`
+  `inLibrary` (not archived, and live or with a version `staged`) filters the Library and space reads, the tree
+  (`spaceNodes` — it is no parent, holds no place), `GET /docs` / `list_docs` / My Work's list, `query`, the
+  proposals' paths, `list_spaces` and Ask's counts. It holds no slug: `doc_slug_taken` reads it as free (New page
+  goes ahead), and the gate's next proposal of that slug TAKES THE ROW OVER as a new page — its space (checked as a
+  new page's), section, title, owner and place are the proposal's (`propose_doc_update` `revive`); the rejected
+  versions stay under it in History. Opening it by link (`GET /doc/:slug`, `get_doc`) still reads it. Not done: an
+  import's plan still counts its slug as taken (it picks another), which is harmless.
 
 ### Your own Library (`0076_10_17_staging` › `0084_library_prefs`)
 
@@ -176,7 +186,10 @@ PERSON's soft write; there is no hard delete of a page anywhere.
   own parent (same space), taking its place among its siblings in their own order — the new sibling list (siblings
   before it, its children, siblings after it) is renumbered `RANK_STEP` apart (`shared/docs-tree-core.ts`
   `planArchive`). Grandchildren stay under their parents. Nothing goes deeper, so the 6-level cap holds. Its own
-  `parent_slug` is KEPT (its old place, for Restore). Its slug stays reserved forever.
+  `parent_slug` is KEPT (its old place, for Restore). Its slug stays reserved forever. The children's moves run first
+  in the batch and only while the page is still in the Library, then the guarded archive: of two archives racing, one
+  applies whole and the other is 409 `archived` with nothing moved (Restore the same way, its siblings' renumber only
+  while the page is still archived; the loser is 409 `not_archived`).
 - **Restore** clears the two columns and puts the page back as the LAST child of its old parent when that page is in
   the Library, in the same space, and the cap allows it — else at the end of the space's top level (`planRestore`).
   It comes back alone: the children it moved up stay where they are.
@@ -254,7 +267,7 @@ is an MCP tool. Any signed-in member.
 | `POST /imports/:id/pages` | the starter | ≤ 25 `{ path, text }` (a folder page with no file of its own is sent as its key, `folder/`, with no text). The batch is refused whole when an entry is not a page of the plan (`not_in_manifest`), not Markdown (`not_markdown`) or an unsafe path (`bad_path`). Each page: valid text (`not_utf8`), ≤ 1 MB (`too_large`), no longer than the manifest said and with the heading it said (`changed`), not empty; its body prepared with the SERVER's path → slug map and the run's uploaded images; a new page whose slug another page took meanwhile is `slug_taken`. Then INTO THE GATE: `ingestDocProposal` (confidence high, section `reference`, the run's space, the planned parent — or the nearest planned ancestor that exists, else the run's parent — ledger `import:<id>` × the page's index in the plan, `{ importId, importPath }`). A retried batch replays from the ledger: nothing is staged twice and the answer is the same. Answers `{ run, results: [{ path, outcome: staged / unchanged / skipped / failed, code? }] }`. |
 | `POST /imports/:id/finish` | the starter (`cancel`: or an admin) | `done` (everything planned reached Review), `partial` (files were skipped or pages failed), `failed` (nothing reached Review and something failed); a page of the plan never sent is listed as `failed`. `{ cancel: true }` → `abandoned` with `cancelled` — the pages already sent stay in Review. |
 | `GET /imports`, `GET /imports/:id` | any member | history, newest first (100), and `running`. A failed read is a 503. |
-| `POST /imports/:id/approve-all` | any member | Review's Approve all: the import's versions still waiting (staged, the page's NEWEST staged version, newer than live) through `promote_doc` — links and parents apply as for one promote — 25 per call; `{ done, remaining, space, space_name }`, the client repeats while `remaining`. |
+| `POST /imports/:id/approve-all` | any member | Review's Approve all: the import's versions still waiting (staged, the page's NEWEST staged version, newer than live) through `promote_doc` — links and parents apply as for one promote — 25 per call, from the cursor `{ after }` (a version row id; none = the start); `{ done, failed, next, remaining, space, space_name }`. A page whose promote fails is SKIPPED and counted (`failed`; it stays waiting for Review one by one) and `next` steps past it — the client sends `next` back as `after` and repeats while `remaining` and the call tried something, then says what could not be approved. |
 | `POST /imports/:id/reject-all` | any member | Reject all, SOFT (`status = 'rejected'`, the body kept, the open risk closed), 100 per call, the same answer. A page whose newest change is someone else's (an agent's on top) is left alone by both. |
 
 The run record: `status` (`running` / `done` / `partial` / `failed` / `abandoned` — a running run silent for

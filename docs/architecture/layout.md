@@ -274,6 +274,8 @@
   Then `0086_projects` (Projects) [`projects`, `project_members`, `project_pins`, and `chat_threads.project_id` /
   `artifact_pages.project_id`; additive — `projects.md`].
   Then `0087_sample_orgs` [`orgs.sample`: the Sample workspace every new person gets — `organizations.md` › 1e].
+  Then `0088_doc_versions_unique` [UNIQUE `(org_id, slug, version)` on `doc_versions`, and the stale staged versions
+  earlier promotes left marked `superseded` — `ingestion-gate.md` › Staged-write model].
 - Projects: `shared/projects-core.ts` (zod-free: the vocabulary, limits, DTOs, `PROJECT_ROUTES`, `projectSlug`),
   `shared/projects.ts` (zod), `src/data/projects.ts` (the rows), `src/tools/projects.ts` (the access rule, the writers,
   the reads), `src/projects/routes.ts` (the cookie routes at `/projects`), `src/ai/ask/project.ts` (Ask in a project),

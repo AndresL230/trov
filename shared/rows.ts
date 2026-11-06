@@ -62,8 +62,9 @@ export interface DocVersionRow {
   version: number;
   body: string;
   summary: string | null;
-  // 'rejected' is set only by Phase 3's reject route; Phase 2 never sets it.
-  status: "staged" | "promoted" | "rejected";
+  // The column has no CHECK: the values and their moves are src/tools/writes.ts `DOC_VERSION_STATUSES`, the one writer.
+  // 'rejected' is a person's reject; 'superseded' is set by a promote on the page's OLDER staged versions (0088).
+  status: "staged" | "promoted" | "rejected" | "superseded";
   confidence: string | null;
   created_at: string;
   created_by: string;
@@ -106,7 +107,8 @@ export interface AdrRow {
   context: string | null;
   decision: string | null;
   rationale: string | null;
-  // 'rejected' is set only by Phase 3's reject route; Phase 2 never sets it.
+  // No CHECK on the column: the values and their moves are src/tools/writes.ts `ADR_STATUSES` — only a draft is
+  // ratified or rejected, by a person.
   status: "draft" | "ratified" | "rejected";
   confidence: string | null;
   created_at: string;

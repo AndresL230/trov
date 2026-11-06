@@ -18,7 +18,7 @@ import { extractDocLinks } from "@shared/docs-links-core";
 import { pageAuthority, type DocMoveErrorCode, type DocMoveResult, type DocPageDTO, type DocPageRef, type DocTreePlace, type LibraryPageDTO } from "@shared/docs-core";
 import type { DocRow } from "@shared/rows";
 import { all, batch, first, stmt, type Stmt, type TenantContext } from "../data/sql";
-import { libraryPages, spaceState } from "./spaces";
+import { inLibrary, libraryPages, spaceState } from "./spaces";
 import { hasRole } from "../data/context";
 
 export { MAX_DEPTH };
@@ -53,19 +53,26 @@ const REFUSAL_TEXT: Record<MoveRefusal, string> = {
 };
 
 /** Every page of a space IN THE LIBRARY as tree nodes (slug, parent, rank, title). An archived page
- *  (0083_doc_archive) is in no tree: nothing moves next to it, under it, or is placed under it. */
+ *  (0083_doc_archive) is in no tree: nothing moves next to it, under it, or is placed under it. Nor is an empty shell
+ *  (a page never approved whose every version was rejected — `inLibrary`). */
 export const spaceNodes = (ctx: TenantContext, space: string): Promise<DocTreeNode[]> =>
-  all<DocTreeNode>(ctx, `SELECT slug, parent_slug, tree_rank, space, title FROM docs WHERE org_id = ? AND space = ? AND archived_at IS NULL`, ctx.orgId, space);
+  all<DocTreeNode>(ctx, `SELECT slug, parent_slug, tree_rank, space, title FROM docs WHERE org_id = ? AND space = ? AND ${inLibrary("docs")}`, ctx.orgId, space);
 
-/** The space of a page in the Library (null: no such page of the org, or it is archived). */
+/** The space of a page in the Library (null: no such page of the org, it is archived, or an empty shell). */
 const docSpaceOf = async (ctx: TenantContext, slug: string): Promise<string | null> =>
-  (await first<{ space: string }>(ctx, `SELECT space FROM docs WHERE org_id = ? AND slug = ? AND archived_at IS NULL`, ctx.orgId, slug))?.space ?? null;
+  (await first<{ space: string }>(ctx, `SELECT space FROM docs WHERE org_id = ? AND slug = ? AND ${inLibrary("docs")}`, ctx.orgId, slug))?.space ?? null;
 
 const isArchivedDoc = async (ctx: TenantContext, slug: string): Promise<boolean> =>
   !!(await first(ctx, `SELECT 1 AS x FROM docs WHERE org_id = ? AND slug = ? AND archived_at IS NOT NULL`, ctx.orgId, slug));
 
-export const placeStmt = (ctx: TenantContext, slug: string, parent: string | null, rank: number | null): Stmt =>
-  stmt(ctx, `UPDATE docs SET parent_slug = ?, tree_rank = ? WHERE org_id = ? AND slug = ?`, parent, rank, ctx.orgId, slug);
+/** A condition a statement runs under, inside its batch (` AND <sql>`): how a write of several statements stays ONE
+ *  transition when its first statement may find the row already moved on — promote (`promote_doc`) and archive
+ *  (src/tools/doc-archive.ts) guard the rest of their batch on what that first statement did. */
+export interface StmtGuard { sql: string; params: unknown[] }
+const andGuard = (g?: StmtGuard): string => (g ? ` AND ${g.sql}` : "");
+
+export const placeStmt = (ctx: TenantContext, slug: string, parent: string | null, rank: number | null, guard?: StmtGuard): Stmt =>
+  stmt(ctx, `UPDATE docs SET parent_slug = ?, tree_rank = ? WHERE org_id = ? AND slug = ?${andGuard(guard)}`, parent, rank, ctx.orgId, slug, ...(guard?.params ?? []));
 
 /** The move route's body, or a 400. */
 function parseTarget(raw: unknown): MoveTarget {
@@ -133,11 +140,13 @@ export async function checkParent(ctx: TenantContext, space: string, slug: strin
 
 // ── promote: links and the requested parent ──────────────────────────────────
 
-/** The statements that rebuild a page's `doc_links` from the body going live (a link to itself is not kept). */
-export function linkStmts(ctx: TenantContext, slug: string, body: string): Stmt[] {
-  const out: Stmt[] = [stmt(ctx, `DELETE FROM doc_links WHERE org_id = ? AND from_slug = ?`, ctx.orgId, slug)];
+/** The statements that rebuild a page's `doc_links` from the body going live (a link to itself is not kept), each run
+ *  only under `guard` when one is given. */
+export function linkStmts(ctx: TenantContext, slug: string, body: string, guard?: StmtGuard): Stmt[] {
+  const g = guard?.params ?? [];
+  const out: Stmt[] = [stmt(ctx, `DELETE FROM doc_links WHERE org_id = ? AND from_slug = ?${andGuard(guard)}`, ctx.orgId, slug, ...g)];
   for (const to of extractDocLinks(body).filter((t) => t !== slug).slice(0, 500)) {
-    out.push(stmt(ctx, `INSERT OR IGNORE INTO doc_links (org_id, from_slug, to_slug) VALUES (?, ?, ?)`, ctx.orgId, slug, to));
+    out.push(stmt(ctx, `INSERT OR IGNORE INTO doc_links (org_id, from_slug, to_slug) SELECT ?, ?, ? WHERE 1${andGuard(guard)}`, ctx.orgId, slug, to, ...g));
   }
   return out;
 }
@@ -147,15 +156,17 @@ export function linkStmts(ctx: TenantContext, slug: string, body: string): Stmt[
  * parent is still a valid place and is not where the page already is — the move under it (with any renumber).
  * An invalid parent leaves the tree as it is.
  */
-export async function promoteTreeStmts(ctx: TenantContext, doc: Pick<DocRow, "slug" | "space" | "parent_slug">, body: string, parent: string | null): Promise<Stmt[]> {
-  const out = linkStmts(ctx, doc.slug, body);
+export async function promoteTreeStmts(ctx: TenantContext, doc: Pick<DocRow, "slug" | "space" | "parent_slug">, body: string, parent: string | null, guard?: StmtGuard): Promise<Stmt[]> {
+  const out = linkStmts(ctx, doc.slug, body, guard);
   if (!parent || parent === (doc.parent_slug ?? null)) return out;
   const nodes = await spaceNodes(ctx, doc.space);
   if (!nodes.some((n) => n.slug === parent)) return out;
   const plan = planMove(nodes, doc.slug, { kind: "into", ref: parent });
   if (!plan.ok) return out;
-  out.push(placeStmt(ctx, doc.slug, plan.parent_slug, plan.tree_rank));
-  for (const [s, r] of plan.renumber ?? []) out.push(stmt(ctx, `UPDATE docs SET tree_rank = ? WHERE org_id = ? AND slug = ?`, r, ctx.orgId, s));
+  out.push(placeStmt(ctx, doc.slug, plan.parent_slug, plan.tree_rank, guard));
+  for (const [s, r] of plan.renumber ?? []) {
+    out.push(stmt(ctx, `UPDATE docs SET tree_rank = ? WHERE org_id = ? AND slug = ?${andGuard(guard)}`, r, ctx.orgId, s, ...(guard?.params ?? [])));
+  }
   return out;
 }
 

@@ -5,6 +5,7 @@ import { withAiMeta, type FeedDbRow } from "./feed-ai";
 import { extractOutline } from "@shared/doc-outline";
 import { resolveSpaceAlias, type DocPageDTO } from "@shared/docs-core";
 import { readDocPage } from "./doc-tree";
+import { inLibrary } from "./spaces";
 import { buildTree, ancestorsOf, type DocTreeNode } from "@shared/docs-tree-core";
 import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, QueryType as ContractQueryType } from "@shared/contract";
 import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@shared/artifacts";
@@ -36,10 +37,12 @@ export async function get_doc(
   return { doc, versions, tags };
 }
 
-/** Does ANY page of the org hold this slug — an archived one too (a slug stays reserved, 0083_doc_archive)? */
+/** Does ANY page of the org hold this slug — an archived one too (a slug stays reserved, 0083_doc_archive)? An empty
+ *  shell (never approved, every version rejected — `inLibrary`) holds none: a new page takes its row over. */
 export async function doc_slug_taken(ctx: TenantContext, slug: string): Promise<"live" | "archived" | null> {
-  const row = await first<{ archived: number }>(ctx, `SELECT archived_at IS NOT NULL AS archived FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
-  return row ? (row.archived ? "archived" : "live") : null;
+  const row = await first<{ archived: number; shell: number }>(ctx,
+    `SELECT archived_at IS NOT NULL AS archived, NOT (${inLibrary("docs")}) AS shell FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
+  return !row ? null : row.archived ? "archived" : row.shell ? null : "live";
 }
 
 /** The Docs screen's read of one doc (`GET /doc/:slug`): the doc with its live body, its tags, and
@@ -83,8 +86,8 @@ export async function get_doc_version(ctx: TenantContext, slug: string, version:
  *  MCP `list_docs` keeps the bodies (its contract). */
 export async function list_doc_tree(ctx: TenantContext, section?: string): Promise<DocListRow[]> {
   const docs = section
-    ? await all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND section = ? AND archived_at IS NULL ORDER BY slug ASC`, ctx.orgId, section)
-    : await all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND archived_at IS NULL ORDER BY slug ASC`, ctx.orgId);
+    ? await all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND section = ? AND ${inLibrary("docs")} ORDER BY slug ASC`, ctx.orgId, section)
+    : await all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND ${inLibrary("docs")} ORDER BY slug ASC`, ctx.orgId);
   return docs.map((d) => ({
     slug: d.slug, section: d.section, title: d.title, current_version: d.current_version,
     updated_at: d.updated_at, updated_by: d.updated_by, space: d.space, owner: d.owner,
@@ -100,14 +103,14 @@ export async function list_docs(ctx: TenantContext, section?: string, space?: st
   if (section) { clauses.push("section = ?"); params.push(section); }
   const sp = resolveSpaceAlias(space);
   if (sp) { clauses.push("space = ?"); params.push(sp); }
-  return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND archived_at IS NULL${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY slug ASC`, ...params);
+  return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND ${inLibrary("docs")}${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY slug ASC`, ...params);
 }
 
 /** Every doc WITHOUT its body — for a surface that only lists (My Work's "Docs you
  *  own"), so it never pulls every doc's full text over the wire. */
 export async function list_doc_meta(ctx: TenantContext): Promise<DocMetaRow[]> {
   return await all<DocMetaRow>(ctx,
-    `SELECT slug, section, title, current_version, updated_at, updated_by, space, owner FROM docs WHERE org_id = ? AND archived_at IS NULL ORDER BY slug ASC`,
+    `SELECT slug, section, title, current_version, updated_at, updated_by, space, owner FROM docs WHERE org_id = ? AND ${inLibrary("docs")} ORDER BY slug ASC`,
     ctx.orgId);
 }
 
@@ -251,7 +254,7 @@ export async function list_proposals(ctx: TenantContext): Promise<ProposalRow[]>
   );
   if (!rows.length) return [];
   // Each page's place: the org's tree read once (no bodies), resolved as forgivingly as the Library's own read.
-  const tree = buildTree(await all<DocTreeNode>(ctx, `SELECT slug, parent_slug, tree_rank, space, title FROM docs WHERE org_id = ? AND archived_at IS NULL`, ctx.orgId));
+  const tree = buildTree(await all<DocTreeNode>(ctx, `SELECT slug, parent_slug, tree_rank, space, title FROM docs WHERE org_id = ? AND ${inLibrary("docs")}`, ctx.orgId));
   return rows.map((r) => ({ ...r, path: ancestorsOf(tree, r.slug).map((a) => a.title ?? a.slug) }));
 }
 
@@ -698,7 +701,7 @@ export async function query(ctx: TenantContext, req: QueryRequest, viewer?: stri
         `SELECT docs_fts.slug AS key, bm25(docs_fts, 1.0, 5.0, 1.0, 1.0) AS rank,
                 snippet(docs_fts, -1, ${SNIPPET}) AS snip
          FROM docs_fts JOIN docs ON docs.slug = docs_fts.slug AND docs.org_id = ?
-         WHERE docs_fts MATCH ? AND docs_fts.org_id = ? AND docs.archived_at IS NULL${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY rank LIMIT ${fetchCap}`,
+         WHERE docs_fts MATCH ? AND docs_fts.org_id = ? AND ${inLibrary("docs")}${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY rank LIMIT ${fetchCap}`,
         ...params
       );
       for (const r of rows) candidates.push({ type: "doc", key: String(r.key), score: -r.rank, snippet: r.snip });
@@ -709,7 +712,7 @@ export async function query(ctx: TenantContext, req: QueryRequest, viewer?: stri
       if (space !== undefined) { clauses.push("space = ?"); params.push(space); }
       const rows = await all<{ key: string; ts: string | null }>(
         ctx,
-        `SELECT slug AS key, updated_at AS ts FROM docs WHERE org_id = ? AND archived_at IS NULL${clauses.map((c) => ` AND ${c}`).join("")}
+        `SELECT slug AS key, updated_at AS ts FROM docs WHERE org_id = ? AND ${inLibrary("docs")}${clauses.map((c) => ` AND ${c}`).join("")}
          ORDER BY (updated_at IS NULL), updated_at DESC, slug DESC LIMIT ${fetchCap}`,
         ...params
       );
