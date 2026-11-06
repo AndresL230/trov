@@ -114,6 +114,7 @@ export const RELEASES: Release[] = [
       "Approving an older doc proposal can no longer roll a page back, and a rejected decision can't be ratified by mistake.",
       "When two people change the same ticket, sprint, plan or prompt at once, the second is told it changed meanwhile instead of overwriting it.",
       "A double click, a slow answer or a lost connection no longer creates something twice or leaves a screen stuck.",
+      "Ask Trov never reports a change that ran as failed, and an interrupted answer keeps every Undo.",
     ],
     headsUp: [
       "The Tickets badge, Home's Triage and the daily sprint line now count tickets the same way the Roadmap does, so some numbers change.",
@@ -122,22 +123,26 @@ export const RELEASES: Release[] = [
       "Before merging #218, check production has no duplicate doc versions — `SELECT org_id, slug, version, COUNT(*) n FROM doc_versions GROUP BY 1, 2, 3 HAVING n > 1` must return nothing — then apply `0088_doc_versions_unique` (merging applies it).",
       "Apply `0089_sprint_completed_at` (merging applies it). Publish the Trov plugin 0.12.1: the handoff and trov skills drop the one-handoff-per-session rule.",
       "A duplicate Pro subscription is cancelled automatically but not refunded: refund it by hand in Stripe — Platform's `billing.duplicate` audit row names both subscriptions.",
+      "Apply `0092_ai_state_guards` (merging applies it).",
     ],
     patches: {
       added: [],
       changed: [
         "A sprint finished long ago no longer shows as finished this week, and agents read a prompt's published version (#219)",
         "An agent can leave as many handoffs in one session as you ask for; only a retry of the same one is folded into it (#219)",
+        "Ask Trov's change cards can't be confirmed while AI is off for the organization (#221)",
       ],
       fixed: [
         "Docs: approving an older proposal no longer rolls a page back; a rejected new page frees its name; Approve all skips a page it can't (#218)",
         "Tickets, sprints, the plan and prompts refuse a change made at the same moment instead of overwriting it; expired handoffs can't be claimed (#219)",
         "Billing: an organization can no longer pay for Pro twice; a second paid upgrade is cancelled at once (#220)",
         "Invitations revoked while being accepted no longer add the person; app connections never finished stop counting against your limit (#220)",
+        "Ask Trov answers one question at a time per chat, never marks a change that ran as failed, and keeps Undo after an interrupted answer (#221)",
+        "AI background work never runs or bills twice, and turning AI off drops what was queued (#221)",
       ],
       removed: [],
     },
-    prs: [218, 219, 220],
+    prs: [218, 219, 220, 221],
   },
   // The Sample workspace every new person gets at sign-up: one PR.
   {
