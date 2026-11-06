@@ -139,10 +139,12 @@ export const RELEASES: Release[] = [
         "Invitations revoked while being accepted no longer add the person; app connections never finished stop counting against your limit (#220)",
         "Ask Trov answers one question at a time per chat, never marks a change that ran as failed, and keeps Undo after an interrupted answer (#221)",
         "AI background work never runs or bills twice, and turning AI off drops what was queued (#221)",
+        "Trov no longer looks signed out when it can't be reached or a page fails to open; it says so and offers Try again (#222)",
+        "Back closes an open person card, dialog or menu, and Escape closes one layer at a time (#222)",
       ],
       removed: [],
     },
-    prs: [218, 219, 220, 221],
+    prs: [218, 219, 220, 221, 222],
   },
   // The Sample workspace every new person gets at sign-up: one PR.
   {
