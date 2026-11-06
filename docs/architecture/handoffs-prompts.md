@@ -37,16 +37,28 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
 
 - **A handoff is an addressed message, not knowledge** — `src/tools/handoffs.ts` writes it directly (no vocab,
   no confidence, never staged). The sender is always the principal. A create carrying a session id is
-  replay-safe through `processed_items` (item_type `handoff`, same session-id + item-index key as `/ingest`).
-  **Claim is ONE conditional UPDATE** (`… WHERE status = 'pending' AND (recipient = 'anyone' OR recipient = me OR
-  sender = me)`); on 0 changes it re-reads for 404 / 403 / 409 `handoff is <status>`, so a race has one winner.
+  replay-safe through `processed_items` (item_type `handoff`, same session-id + item-index key as `/ingest`): the
+  handoff and its ledger row are ONE batch, and the insert is guarded by the ledger (`WHERE NOT EXISTS`), so a retry or
+  a racing twin answers with the first one's handoff.
+  **Claim is ONE conditional UPDATE** (`… WHERE status = 'pending' AND expires_at > now AND (recipient = 'anyone' OR
+  recipient = me OR sender = me)`); on 0 changes it re-reads for 404 / 403 / 409 `handoff is <status>`, so a race has
+  one winner. **Expiry is read, not only swept**: a `pending` row past its `expires_at` reads as `expired` on every
+  surface (`handoffStatus` in `toHandoffView`; `listHandoffs`' status filter uses it), is never claimed, and is not in
+  the badge's count — the cron's flip only catches the row up.
   Expire: sender or named recipient, pending only. Create writes a feed row through `append_feed` (no tags).
   The repo cron expires overdue pending handoffs on EVERY tick (`expireDueHandoffs`, D1 only, before the `:00`
   early return).
-- **Prompts** (`src/tools/prompts.ts`): every save appends a version; the latest version's status/body ARE the
-  prompt's. `savePrompt(…, via)` — a person (`via: "human"`, the cookie route) saves draft/staged/published and
+- **Prompts** (`src/tools/prompts.ts`): every save appends a version; the latest version's status/body are what the
+  LIBRARY shows (the web's list and page, where a person publishes). **An agent reads the SETTLED version**: MCP
+  `get_prompt` and `search_prompts` serve the newest PUBLISHED version, else — nothing published yet — the latest, its
+  `status` saying so (`getPrompt(…, "settled")`), so a version an agent staged never replaces the published one for
+  other sessions until a person publishes it. A draft is visible to everyone in the library (the editor says so:
+  "Saved, not published…"). `savePrompt(…, via)` — a person (`via: "human"`, the cookie route) saves draft/staged/published and
   may rename the slug (both tables, one batch); an agent (`via: "agent"`, MCP `save_prompt`) is FORCED to
-  `staged` and may not rename. Publishing a staged version and retagging are session-cookie only. **Usage**
+  `staged` and may not rename. The batch is guarded: the prompt's row is written only while it is live and still at
+  the version read (a deleted prompt or a racing save is a 409, nothing written), and the version row only with it.
+  Publishing a staged version and retagging are session-cookie only; publish takes only the NEWEST version that is not
+  a draft (an older staged version is a 409 naming the newer one; the page's Publish button offers that one). **Usage**
   (0035): `use_count` / `last_used_at` (on `PromptSummary` / `PromptDetail`) are bumped by ONE conditional UPDATE
   in `recordPromptUse` — from MCP `get_prompt` (every principal) and `POST /api/prompts/:slug/used` (the web Copy
   button; 404 unknown slug, 503 on a D1 failure, never a 500); a use is not an edit, so `updated_at` stays, and
@@ -127,7 +139,9 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
   upload keys are refused with `ASK_NO_PROMPT_UPLOAD`, never dropped) and the schema Ask offers the model is
   narrowed to `{ title, body }` (`ASK_NARROWED_ARGS`, `src/ai/ask/tools.ts`). The `handoff` skill uploads a
   prompt over about 2 KB when it has a shell and reports `#N` only after the PUT answers. Tests:
-  `test/handoffs.upload.test.ts`.
+  `test/handoffs.upload.test.ts`. The ledger key a PUT creates with is STABLE across retries — the session's, else
+  the token's own (`upload:<token hash>`) — so a create that wrote its handoff and then failed (the token released) is
+  answered, not repeated, by the retried PUT.
 - **MCP** (every principal): `send_handoff` (inline or upload form, above), `list_handoffs` (pending `me` + `anyone` by default; only `sent`
   shows claimed/expired), `get_handoff`, `claim_handoff` (returns one markdown block: prompt, `## Handoff
   summary`, `## Context`, then `## Read these first (not complete)` when anything matched), `expire_handoff`, `search_prompts`, `get_prompt` (fills `{{vars}}`, lists `unfilled`),
@@ -160,7 +174,11 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
   the page (a self-link's: `side`, default requester). Caps for every author: 1,000 characters, 20 per side per
   link (re-checked in the INSERT), and `LIMITS.link_note` (60 / person / hour).
 - **The inbox** (`readInbox`): notes from the OTHER side, on open links whose caller's side is bound to the
-  session, at most 5 per read, oldest first, the rest counted. One statement when nothing waits (it stamps the
+  session, at most 5 per read, oldest first, the rest counted. "Open" is ONE predicate, `linkOpenSql`
+  (`shared/links.ts`): open, not past `expires_at` and not idle 12 h — so a link the cron has not flipped yet is
+  already ended for the inbox, `askThreadLinkNotes` and the note writer (a note on it is 409 `link has expired`). A
+  note still undelivered when its link ends is never handed over by a later read; it stays in the link's thread, on its
+  page. Every "live link" list is `LINK_LIVE_SQL` (built from `LINK_LIVE_STATES`). One statement when nothing waits (it stamps the
   side's `*_seen_at` and counts in its RETURNING); delivery is one `UPDATE … WHERE delivered_at IS NULL …
   RETURNING`, so each note goes once. `formatInbox` fences each note with a nonce fresh per delivery;
   `inboxHookOutput` wraps it as hook JSON (≤ 10,000 characters).

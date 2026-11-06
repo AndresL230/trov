@@ -12,7 +12,16 @@ ids, plus `dates` / `summary` / `urgency` / `lead` / `domain` alongside the pre-
 (now rendered as markdown) and `phase`. Sprint `done` is set by a PERSON, never event-inferred: the plan
 write may set it (admin), and ANY signed-in member completes a sprint with `POST /sprints/:id/complete` or MCP
 `complete_sprint` — sprint writes are open to every member; only the whole-plan rewrite is admin-only
-(`ingestion-gate.md` › Sprints).
+(`ingestion-gate.md` › Sprints). **When** it was completed is `sprints.completed_at` (0089): stamped by
+`complete_sprint` and by `write_plan` moving a sprint to `done` (kept while it stays done), cleared by every move off
+done (`set_sprint_active`, `write_plan`); "completed this week" (the weekly highlights) reads it — never `updated_at`,
+which every plan write stamps on each sprint it lists. A status outside `SPRINT_STATUSES` is a `bad_request` at the
+writer. `set_sprint_active(false)` holds its "never un-finish" no-op in the UPDATE itself (`status != 'done'`).
+**The plan write is ONE batch** (`write_plan`): every sprint, the `plan` row and the `plan_versions` snapshot (taken in
+SQL inside the batch, `SPRINT_SNAPSHOT_COLUMNS` — a test holds it to the table) land together or not at all; the
+version is guarded — the plan row moves only from the version the call read, and the snapshot's insert fails the whole
+batch when that did not take or the version exists — so two racing plan writes cannot both apply: the loser is a 409
+`conflict` with nothing written.
 **ONE overdue rule**: `sprintDueState(due, now)` in `shared/sprints-core.ts` — a sprint is due all of its
 (local) due day and overdue from the day AFTER, "due this week" = today through 7 days out — read by the sprint
 cards, the Roadmap's Timeline-tab dot / Now box / single NEXT UP (`nextSprintId`), the Timeline and My Work's ticket due dates.
@@ -56,7 +65,10 @@ No live GitHub, no per-user token.
 SEPARATELY as `SprintView.issues` (null without a cache row), so a mirrored ticket and its issue are never
 summed into one number. The ticket half is a live D1 count; the GitHub half is a stored cache (`sprint_progress`,
 keyed `sprint_id`), written as ABSOLUTE `closed`/`total` (so delivery order is irrelevant — the last
-write wins) by two direct writers: the webhook (event-derived, on issue events) and the `scheduled()`
+write wins) by two direct writers that count an issue-array ref by ONE rule (total = every issue in the array; closed
+= the closed ones plus the ones that LEFT the repository — a `deleted` / `transferred` snapshot, or GitHub's 410 / 301
+on the recompute's fetch; an issue with no snapshot, or a 404, stays in the total, open; an auth or other GitHub error
+leaves the cache as it was): the webhook (event-derived, on issue events) and the `scheduled()`
 cron backstop (`recomputeAllProgress`, run per org with that org's GitHub credential from
 `resolveGithubCredential`, off the render path). `github_ref` is bare
 (a GITHUB milestone number — GitHub's own vocabulary, kept deliberately — OR a JSON array of issue
@@ -102,7 +114,8 @@ tile off `reviewHeadsFromReads` (no diff), and every handoff count — Your sess
 Queued handoffs cell (count + the newest: its row opens it; **Claim & copy** (`mwHandoffClaim`,
 the owner's call 2026-10-15) copies it as a prompt inside the click, then claims it with a `sess_web_` session —
 permanent, as on the handoff screen) — off `handoffsForMe`, the ONE
-definition the sidebar badge uses too (pending, recipient = me, self-sent included, `anyone` excluded;
+definition the sidebar badge uses too (pending and not past `expires_at` — a pending row past it reads as
+`expired` everywhere, `handoffStatus` — recipient = me, self-sent included, `anyone` excluded;
 `GET /badges` counts the same set in SQL, held to it by `test/badges.routes.test.ts`).
 `person` resolves via the github `identities` row (`resolvePersonForLogin`, see Identity above); an
 unmapped login yields an empty EVENT projection (`degraded:false`) — but the ticket list is read BEFORE the
@@ -223,13 +236,15 @@ anytime in Org settings." (`sampleNote`; `HomeProps.sample`, from `MyOrg.sample`
 
 - **Its one server read** is `GET /home` (`src/tools/home.ts`, `HomeData` in `shared/home-core.ts`), D1 only, `tz` =
   the viewer's minutes east of UTC (a bad one is a 400, a failed read a 503 `{ error }`): `HOME_DAYS` (180) local days,
-  each counting tickets set done (`ticket_events.to_status = 'done'`, a ticket once a day), handoffs claimed
+  each counting tickets done (`TICKET_DONE_EVENT_SQL`: a history row to `done` whose ticket is still done, a ticket
+  once a day — the weekly mail's rule too, `tickets.md`), handoffs claimed
   (`handoffs.claimed_at`), doc versions promoted (`doc_versions.promoted_at`, 0077_home) and sessions recorded (Feed
   entries agents wrote, `origin` agent — Trov's digests are not sessions); the team (every member, what each is on —
   their newest ticket in progress or testing, else their newest entry — and when Trov last saw them: an entry, a
   ticket move, a handoff sent or claimed, an MCP token used); the repositories with their last captured push (a push
-  with no repository named is the primary's); open tickets in no sprint (backlog); and Triage (`submitted`, no
-  assignee) with its oldest. **Never guess**: promotions were not timed before 0077_home, so a day before the org's
+  with no repository named is the primary's); open tickets in no sprint (backlog); and Triage — what nobody has
+  picked up, `UNPICKED_TICKET_SQL` (native, `submitted`, no assignee; the badge's and the digest's rule) — with its
+  oldest. **Never guess**: promotions were not timed before 0077_home, so a day before the org's
   `promotions_timed_at` (NULL = since the org's creation) is `docs: null`, and a window holding one is "—"
   (`homeSum`); "No pushes yet" is said only of the primary, whose pushes are captured.
 - **Everything else is a read the app already has**: My Work's DTO (For you), Review's two reads and Unplaced

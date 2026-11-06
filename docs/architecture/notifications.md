@@ -168,7 +168,8 @@ assembler to the org's address (`<origin>/<slug>/#…`).
     "Review: 3 waiting". Sent only to someone who can promote, `REVIEW_CONFIRMERS` — every role today,
     organizations.md §4; owner ruling Q44), "Sprint: Hosting, due Fri, 2 of 5
     done" (the person's sprint in progress, else the org's due soonest; "due Fri" within 6 days, "due Nov 2" past
-    that, "3 days late" when overdue; declined tickets do not count — it rides EVERY daily whatever `roadmap_plan`
+    that, "3 days late" when overdue; "N of M done" is the Roadmap's own progress — `sprintProgress` over
+    `ticketCountsBySprint`, done or declined over every ticket — so the mail and the card agree — it rides EVERY daily whatever `roadmap_plan`
     resolves to, owner ruling Q45, `selectKinds`: that kind's cadence governs the weekly only, and only the org's
     policy turning the kind off removes it; a daily is never sent for it alone), "Tickets: 2
     waiting for someone, 3 assigned to you".

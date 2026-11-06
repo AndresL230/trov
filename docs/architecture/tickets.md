@@ -3,7 +3,8 @@
 <!-- Moved verbatim out of CLAUDE.md (2026-10-07). This is the detailed reference; CLAUDE.md keeps only what applies to every change. Keep it current when you change the area. A reference to another section ("see Core invariant", "the Repo dashboard section below") now means another file in this folder — see the table at the bottom of CLAUDE.md. -->
 
 **Tickets are the largest authored-write surface** (`src/tools/tickets.ts`, fourteen session-cookie routes in
-`routes.ts`): `create_ticket` (opening `ticket_events` row) / `edit_ticket` (title and/or body) / `transition_ticket` / `move_ticket` (a board drop) / `toggle_assignee` /
+`routes.ts`): `create_ticket` (ONE batch: the ticket, its assignees, its opening `ticket_events` row and its link land
+together or not at all) / `edit_ticket` (title and/or body) / `transition_ticket` / `move_ticket` (a board drop) / `toggle_assignee` /
 `add_ticket_link` / `remove_ticket_link` / `set_ticket_sprint` / `set_ticket_parent` / `add_ticket_comment` /
 `delete_ticket` (`POST /tickets/:id/delete`, any signed-in member, NEVER MCP: a HARD delete in one `db.batch` —
 assignees, links, comments, history and `artifact_links` rows go with it, sub-tickets are detached, the number is
@@ -12,9 +13,16 @@ never reissued; a ticket MIRRORED from a GitHub issue is a 403, since the mirror
 gate, no confidence, no staged state. Every write bumps `tickets.updated_at` (the queue's sort key); the
 status machine is `canTransition` in `shared/tickets-core.ts` (re-exported by `shared/tickets.ts`) and is
 never re-declared server-side; an illegal move or a nesting-rule break is a 409 that writes nothing;
-tickets nest exactly ONE level (`set_ticket_parent`'s four rejections). A ticket that CLOSES (done / declined) closes
-Trov's OPEN suggestions about it in the same batch (`closingStmts`: superseded — owner ruling Q35), on all three
-status writers: `transition_ticket`, `move_ticket` and the mirror's forced status (`ai.md` › The kinds).
+tickets nest exactly ONE level (`set_ticket_parent`'s rejections: the parent has a parent, the child has a parent, the
+child is closed, the PARENT is closed, the child has sub-tickets — each re-checked in the UPDATE's own WHERE, so a race
+is a 409 too). **Every status writer is compare-and-set** (`statusMoveStmts`): the UPDATE carries `AND status = <the
+status it read>`, the history row is written in the SAME batch only when that UPDATE took (`changes()`), so
+`ticket_events.from_status` is always a state the ticket really left; a move that lost a race is a 409 ("ticket N
+changed while you were moving it: it is X now") with nothing written — the caller refetches. A ticket that CLOSES (done
+/ declined) closes Trov's OPEN suggestions about it in the same batch (`closingStmts`: superseded — owner ruling Q35;
+it acts only on a ticket that IS closed, so a lost race closes nothing), on all three status writers:
+`transition_ticket`, `move_ticket` (its column renumbering runs after the move's batch) and the mirror's forced status
+(`ai.md` › The kinds).
 
 **The ticket board** (the queue's DEFAULT view, `web/src/tickets.ts` `boardView`; the Table is the other).
 Statuses are `submitted` (Triage) / `in_progress` / `testing` / `done` / `declined` — `testing` (0033) is an
@@ -23,7 +31,11 @@ ring that fills — dashed, half, three quarters, a check — and a cross for de
 signal bars (`priorityMark`), never a pill (`web-ui.md` › Status marks). Every move is FREE (the owner's call, 2026-09-27): ANY status may move to any other —
 Triage straight to Done, and `done` / `declined` back to an open status (nothing is terminal; only a move to the
 status a ticket already has is a 409). The OPEN statuses are `OPEN_STATUSES`, spelled `OPEN_STATUS_SQL` in every
-SQL reader (My Work, the badge, the Repo tile, `seg=open`). Each column is in
+SQL reader (My Work, the Repo tile, `seg=open`). **"Nobody has picked it up"** is ONE rule, `UNPICKED_TICKET_SQL`
+(`shared/tickets-core.ts`): a NATIVE ticket in Triage (`submitted`) with no assignee — what the sidebar badge, the
+ticketq digest's "waiting for someone" and Home's Triage all count. **"Tickets done"** over a window is ONE rule too,
+`TICKET_DONE_EVENT_SQL`: a history row to `done` in the window whose ticket is STILL done (one reopened since is not) —
+Home's Activity, the weekly numbers line and the weekly highlights. Each column is in
 a SAVED order, `tickets.board_rank`, written only by a drag: `POST /tickets/:id/move {to, after_id}` →
 `move_ticket` sets status AND position in one batch (a status change appends the same history row as
 `transition_ticket`; a same-column drop only reorders). NULL = no position = the TOP of the column,
@@ -140,7 +152,10 @@ issue itself.** Every issue of the org's PRIMARY repository (its `org_repos` row
   ticket (`edit_ticket`, `toggle_assignee` — `assign_ticket` over MCP — the normal transition table). GitHub drives only CLOSURE: a
   `closed` delivery forces `done`/`declined`, `deleted` / `transferred` forces `declined`, `reopened` puts a
   resolved ticket back to `submitted` — through the module-private `forceStatus`, the ONE writer allowed to
-  bypass `TICKET_TRANSITIONS`, writing a `ticket_events` row as `github-webhook`. Trov never writes back to
+  bypass `TICKET_TRANSITIONS`, writing a `ticket_events` row as `github-webhook`. It is compare-and-set like the
+  ticket writers: a person's move that lands between the read and the write makes it touch nothing, and the delivery
+  re-reads and decides again (three tries, then it throws for the webhook to log; `source_updated_at` was not
+  stamped, so a redelivery or the backfill applies it later). Trov never writes back to
   GitHub, and a sprint is still completed only by a person.
 - **Idempotency / ordering**: creation is ONE guarded D1 batch (ticket, assignees, opening row, locked link —
   each child keyed by `source_ref`), so a replay writes nothing twice; a delivery older than
@@ -150,7 +165,8 @@ issue itself.** Every issue of the org's PRIMARY repository (its `org_repos` row
   there is deliberately no trigger, the harness truncates `ticket_links`) refuses it with 403 and the UI
   shows a lock with no Remove row. Everything else stays writable.
 - **No double counting**: `listAssignedTickets` with its DEFAULT `sources: "canopy"` (the ticketq digest's
-  own half), `ticket_badge`, the digest's unassigned half and the Repo dashboard's Open tickets tile read
+  own half), `ticket_badge`, the digest's unassigned half, Home's Triage (all three `UNPICKED_TICKET_SQL`) and the
+  Repo dashboard's Open tickets tile read
   `source = 'canopy'`; sprint progress counts both, and so does My Work (`sources: "all"` — its screen no
   longer shows the To-do issue list, so the mirrored ticket is the ONE place that work appears there). `deleted` / `transferred` are captured issue actions, and every open-issue reader
   (My Work's To-do, array-ref progress, the Repo dashboard's open issues) treats them as no longer open
