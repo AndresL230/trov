@@ -163,6 +163,8 @@ export type AiThemeColor = (typeof AI_THEME_COLORS)[number];
 /** A theme name's longest (the accept handler's check, and the Rename field's maxlength). */
 export const AI_THEME_NAME_MAX = 40;
 
+/** A LANE's status (the Repo screen's DTO): only a proposed or an active theme is ever a lane. Not the stored enum —
+ *  `repo_themes.status` also has `removed` (its CHECK and its one writer, src/data/themes.ts `THEME_STATUSES`). */
 export const AI_THEME_STATUSES = ["proposed", "active"] as const;
 export type AiThemeStatus = (typeof AI_THEME_STATUSES)[number];
 

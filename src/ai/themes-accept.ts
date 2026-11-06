@@ -13,9 +13,9 @@
 // AS the admin who pressed it.
 import { AI_THEME_COLORS, AI_THEME_NAME_MAX } from "@shared/ai-core";
 import type { TenantContext } from "../data/context";
-import type { AiSuggestionRow } from "../data/ai";
-import { activateTheme, getTheme, mergeTheme, removeTheme, seedPrThemes, THEME_ITEM_TYPE, THEME_SUGGESTION_KIND } from "../data/themes";
-import { nowIso } from "../data/sql";
+import { SUGGESTION_DECIDED_SQL, type AiSuggestionRow } from "../data/ai";
+import { activateTheme, getTheme, mergeTheme, removeThemeStmt, seedPrThemes, THEME_ITEM_TYPE, THEME_SUGGESTION_KIND } from "../data/themes";
+import { nowIso, type Stmt } from "../data/sql";
 import { routeAi } from "./router";
 import { AcceptRefused, type AcceptHandler } from "./accept";
 
@@ -70,36 +70,48 @@ export const themeAcceptHandler: AcceptHandler = {
     const id = themeIdOf(s);
     if (!v || id === null) throw new AcceptRefused("invalid");
     const theme = await getTheme(ctx, id);
-    if (!theme || theme.status !== "proposed") throw new AcceptRefused("not_open");
+    if (!theme) throw new AcceptRefused("not_open");
     const at = nowIso();
+    // The theme already moved the way this Accept asks (a card left open by an earlier Accept that stopped midway, from
+    // before the theme and its seeds moved in one batch): finish it — its seeds are written (idempotent) — and the card
+    // closes, rather than staying open for good beside its active theme.
+    if (theme.status === "active" && !("mergeInto" in v)) {
+      await seedPrThemes(ctx, theme, id, at);
+      await routeAi(ctx, { type: "themes_accepted" });
+      return;
+    }
+    if (theme.status === "removed" && "mergeInto" in v && theme.merged_into === v.mergeInto) {
+      const into = await getTheme(ctx, v.mergeInto);
+      if (into?.status === "active") { await seedPrThemes(ctx, theme, into.id, at); await routeAi(ctx, { type: "themes_accepted" }); }
+      return;
+    }
+    if (theme.status !== "proposed") throw new AcceptRefused("not_open");
     if ("mergeInto" in v) {
       const into = await getTheme(ctx, v.mergeInto);
       if (!into || into.id === id || into.status === "removed" || into.repo.toLowerCase() !== theme.repo.toLowerCase()) throw new AcceptRefused("invalid");
-      if (!(await mergeTheme(ctx, id, into.id, ctx.userId, at))) throw new AcceptRefused("not_open");
-      if (into.status === "active") {
-        // Its PRs join an active lane, which counts from pr_themes: they count there at once (Q-S3).
-        await seedPrThemes(ctx, theme, into.id, at);
-        await routeAi(ctx, { type: "themes_accepted" });
-      }
+      // The fold and — into an ACTIVE lane, which counts from pr_themes — its PRs (Q-S3), in ONE batch.
+      if (!(await mergeTheme(ctx, id, into.id, ctx.userId, at, theme))) throw new AcceptRefused("not_open");
+      if (into.status === "active") await routeAi(ctx, { type: "themes_accepted" });
       return;
     }
     const rename = v.name === theme.name ? undefined : v.name;
     let ok = false;
     try {
-      ok = await activateTheme(ctx, id, ctx.userId, at, rename);
+      // Active, and the PRs its proposal was drawn from written as the lane's (Q-S3), in ONE batch.
+      ok = await activateTheme(ctx, id, ctx.userId, at, rename, theme);
     } catch (e) {
       // Another live theme has that name (merge instead): say so, in the admin's own spelling (Q20).
       if (isUniqueClash(e)) throw new AcceptRefused("invalid", `A theme named ${v.name} already exists.`);
       throw e;
     }
     if (!ok) throw new AcceptRefused("not_open");
-    // The lane keeps the PRs its proposal was drawn from (Q-S3): an active lane counts from pr_themes.
-    await seedPrThemes(ctx, theme, id, at);
     await routeAi(ctx, { type: "themes_accepted" });
   },
-  async dismissed(ctx: TenantContext, s: AiSuggestionRow): Promise<void> {
+  // Remove: the theme goes in the dismissal's OWN batch — never a dismissed card beside a theme still proposed.
+  dismissWith(ctx: TenantContext, s: AiSuggestionRow, at: string): Stmt[] {
     const id = themeIdOf(s);
-    if (id !== null) await removeTheme(ctx, id, ctx.userId, nowIso());
+    return id === null ? [] : [removeThemeStmt(ctx, id, ctx.userId, at,
+      { sql: SUGGESTION_DECIDED_SQL, binds: [ctx.orgId, s.id, "dismissed", ctx.userId, at] })];
   },
 };
 

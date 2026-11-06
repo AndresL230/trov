@@ -101,11 +101,18 @@ export async function putSuggestion(ctx: TenantContext, s: NewSuggestion, at: st
 
 /** Decide an OPEN suggestion — one guarded UPDATE, so two people answering at once cannot both win.
  *  false = it was not open (or not this org's). */
-export async function decideSuggestion(ctx: TenantContext, id: number, state: "accepted" | "dismissed", by: string, at: string = nowIso()): Promise<boolean> {
-  const res = await run(ctx, `UPDATE ai_suggestions SET state = ?, decided_by = ?, decided_at = ? WHERE id = ? AND org_id = ? AND state = 'open'`,
+export async function decideSuggestion(ctx: TenantContext, id: number, state: "accepted" | "dismissed", by: string, at: string = nowIso(), extra: Stmt[] = []): Promise<boolean> {
+  const decide = stmt(ctx, `UPDATE ai_suggestions SET state = ?, decided_by = ?, decided_at = ? WHERE id = ? AND org_id = ? AND state = 'open'`,
     state, by, at, id, ctx.orgId);
-  return (res.meta.changes ?? 0) > 0;
+  // `extra` rides in the same batch (a dismissal's effect on the real item): each statement guards itself on this
+  // decision having been made (`suggestionDecidedSql`), so a lost race writes nothing.
+  const res = await batch(ctx, [decide, ...extra]);
+  return (res[0].meta.changes ?? 0) > 0;
 }
+
+/** SQL true only once suggestion ?id was decided `state` by ?by at ?at — the guard of `decideSuggestion`'s `extra`.
+ *  Binds, in order: org, id, state, by, at. */
+export const SUGGESTION_DECIDED_SQL = `EXISTS (SELECT 1 FROM ai_suggestions s WHERE s.org_id = ? AND s.id = ? AND s.state = ? AND s.decided_by = ? AND s.decided_at = ?)`;
 
 /**
  * A decision about the ITEM closes what Trov suggested about it (owner rulings Q35, Q37): its OPEN suggestions are

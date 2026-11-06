@@ -3,6 +3,7 @@
 import type { AiSuggestionError } from "@shared/ai";
 import type { TenantContext } from "../data/context";
 import type { AiSuggestionRow } from "../data/ai";
+import type { Stmt } from "../data/sql";
 
 export interface AcceptHandler {
   /** Who may accept this kind: any member, or an admin (admin or owner) of the org. */
@@ -25,6 +26,9 @@ export interface AcceptHandler {
   /** What a dismissal also does to the real item (a removed theme), AS `ctx`'s person, after it is recorded.
    *  Never fails the dismissal: a throw is logged. */
   dismissed?(ctx: TenantContext, suggestion: AiSuggestionRow): Promise<void>;
+  /** The same, as statements that join the dismissal's OWN batch (src/data/ai.ts `decideSuggestion`'s `extra`, each
+   *  guarded by `SUGGESTION_DECIDED_SQL` on `at`): the item and its suggestion move together, or neither does. */
+  dismissWith?(ctx: TenantContext, suggestion: AiSuggestionRow, at: string): Stmt[];
 }
 
 /** What the accept request knows beyond the context. */

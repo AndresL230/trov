@@ -50,7 +50,7 @@ export interface PlanView {
  *  it). Built in SQL so the snapshot is taken inside the plan write's own batch; a test holds this list to the table. */
 export const SPRINT_SNAPSHOT_COLUMNS = [
   "id", "title", "description", "target_date", "status", "github_ref", "created_at", "created_by", "updated_at", "phase",
-  "dates", "summary", "urgency", "lead", "domain", "start_date", "org_id", "completed_at",
+  "dates", "summary", "urgency", "lead", "domain", "start_date", "org_id", "completed_at", "source_key",
 ] as const;
 
 const githubRefJson = (ref: number | number[] | null | undefined): string | null =>

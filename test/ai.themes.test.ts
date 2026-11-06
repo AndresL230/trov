@@ -304,6 +304,55 @@ describe("accept, rename, merge, remove — an ADMIN's, through the cookie sugge
     rows = await themesRows();
     expect(rows.find((t) => t.id === ids[1])).toMatchObject({ status: "removed", decided_by: FIXTURE_ADMIN });
   });
+
+  // A theme and its card move together (0092 batch): a write that fails halfway leaves both as they were.
+  const failing = async <T>(sql: string, fn: () => Promise<T>): Promise<T> => {
+    await env.DB.prepare(sql).run();
+    try { return await fn(); } finally { await env.DB.prepare(`DROP TRIGGER IF EXISTS t_theme_fail`).run(); }
+  };
+  const suggState = async (id: number) => (await first<{ state: string }>(env.DB, `SELECT state FROM ai_suggestions WHERE id = ?`, id))!.state;
+
+  it("propose: each theme and its card in ONE batch — a card that cannot be written takes its theme with it", async () => {
+    const card = (t: { name: string }) => ({ value: { name: t.name, description: "d" }, reason: "Because.", cites: [], model: "m", promptVersion: "propose-1" });
+    const ids = await insertProposedThemes(systemCtx(), REPO, [
+      { name: "Search", description: "Find.", colorKey: "sky", position: 0, seedPrs: [1] },
+      { name: "Imports", description: "Bring in.", colorKey: "moss", position: 1, seedPrs: [2] },
+    ], { createdBy: "trov", model: "m", promptVersion: "propose-1" }, undefined, card);
+    expect(await all(env.DB, `SELECT item_ref, state FROM ai_suggestions WHERE kind = 'themes.propose' ORDER BY id`)).toEqual(
+      ids.map((id) => ({ item_ref: `${REPO}#${id}`, state: "open" })));
+    await expect(failing(`CREATE TRIGGER t_theme_fail BEFORE INSERT ON ai_suggestions BEGIN SELECT RAISE(ABORT, 'no card'); END`,
+      () => insertProposedThemes(systemCtx(), REPO, [{ name: "Orphan", description: "x", colorKey: "rust", position: 2, seedPrs: [] }],
+        { createdBy: "trov", model: "m", promptVersion: "propose-1" }, undefined, card))).rejects.toThrow();
+    expect((await themesRows()).map((t) => t.name)).not.toContain("Orphan");
+  });
+
+  it("accept: active and its seed PRs in ONE batch (a failure leaves it proposed and the card open); an already-active theme's card closes", async () => {
+    for (const n of [1, 2, 4]) await addPr(n, 3);
+    const { ids, sugg } = await proposed();
+    const admin = await cookieFor(FIXTURE_ADMIN);
+    // The write's failure is not a typed refusal: it leaves the app (the Worker answers 500), so `app.request` rejects.
+    await expect(failing(`CREATE TRIGGER t_theme_fail BEFORE INSERT ON pr_themes BEGIN SELECT RAISE(ABORT, 'no seed'); END`,
+      () => call("POST", `${BASE}${AI_ROUTES.accept(sugg[0])}`, admin, {}))).rejects.toThrow(/no seed/);
+    expect((await themesRows()).find((t) => t.id === ids[0])!.status).toBe("proposed");
+    expect(await suggState(sugg[0])).toBe("open");
+    // A theme already active beside an OPEN card (left by an Accept from before this batch): Accept finishes it.
+    await run(env.DB, `UPDATE repo_themes SET status = 'active', decided_by = ?, decided_at = ? WHERE id = ?`, FIXTURE_ADMIN, ago(1), ids[1]);
+    expect((await call("POST", `${BASE}${AI_ROUTES.accept(sugg[1])}`, admin, {})).status).toBe(200);
+    expect(await suggState(sugg[1])).toBe("accepted");
+    expect(await prTheme(4)).toMatchObject({ theme_id: ids[1], source: "ai" });
+  });
+
+  it("remove: the theme goes in the dismissal's own batch — a failure leaves the card open and the theme proposed", async () => {
+    const { ids, sugg } = await proposed();
+    const admin = await cookieFor(FIXTURE_ADMIN);
+    await expect(failing(`CREATE TRIGGER t_theme_fail BEFORE UPDATE OF status ON repo_themes BEGIN SELECT RAISE(ABORT, 'no remove'); END`,
+      () => call("POST", `${BASE}${AI_ROUTES.dismiss(sugg[2])}`, admin, {}))).rejects.toThrow(/no remove/);
+    expect(await suggState(sugg[2])).toBe("open");
+    expect((await themesRows()).find((t) => t.id === ids[2])!.status).toBe("proposed");
+    expect((await call("POST", `${BASE}${AI_ROUTES.dismiss(sugg[2])}`, admin, {})).status).toBe(200);
+    expect(await suggState(sugg[2])).toBe("dismissed");
+    expect((await themesRows()).find((t) => t.id === ids[2])!.status).toBe("removed");
+  });
 });
 
 describe("pr.theme sends what the Privacy Policy says: a scrubbed card", () => {

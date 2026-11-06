@@ -365,6 +365,29 @@ describe("sprint drafts — ≥8 open tickets outside any sprint and none active
     expect(placed.filter((x) => x.status === "done").map((x) => x.number)).toEqual([t[4]]); // only the person's own close
     expect((await first<{ decided_by: string }>(env.DB, `SELECT decided_by FROM ai_suggestions WHERE id = ?`, id))!.decided_by).toBe(FIXTURE_ADMIN);
   });
+
+  it("an Accept that fails midway goes back to open, and pressing it again FINDS the sprints it made — never a second one (0092)", async () => {
+    const t = await backlog(DRAFT_MIN_BACKLOG);
+    await batchRound([SPRINT_DRAFT_JOB], { "roadmap.sprint_draft": DRAFT(t) });
+    const id = (await first<{ id: number }>(env.DB, `SELECT id FROM ai_suggestions WHERE kind = 'sprint_draft'`))!.id;
+    // Placing the second sprint's first ticket fails: the first sprint (and its tickets) and the second sprint exist.
+    await env.DB.prepare(`CREATE TRIGGER t_no_place BEFORE UPDATE OF sprint_id ON tickets WHEN NEW.number = ${t[1]} BEGIN SELECT RAISE(ABORT, 'place failed'); END`).run();
+    try {
+      // Not a typed refusal: the failure leaves the app (the Worker answers 500), so `app.request` rejects.
+      await expect(call("POST", `${BASE}${AI_ROUTES.accept(id)}`, await cookieFor(FIXTURE_ADMIN))).rejects.toThrow(/place failed/);
+    } finally {
+      await env.DB.prepare(`DROP TRIGGER IF EXISTS t_no_place`).run();
+    }
+    expect((await first<{ state: string }>(env.DB, `SELECT state FROM ai_suggestions WHERE id = ?`, id))!.state).toBe("open");
+    expect(await count(`SELECT COUNT(*) AS n FROM sprints`)).toBe(2);
+    const ok = await call<{ ok: boolean; suggestion: AiSuggestion }>("POST", `${BASE}${AI_ROUTES.accept(id)}`, await cookieFor(FIXTURE_ADMIN));
+    expect(ok.status).toBe(200);
+    const sprints = await all<{ id: number; title: string; source_key: string }>(env.DB, `SELECT id, title, source_key FROM sprints ORDER BY id`);
+    expect(sprints.map((x) => [x.title, x.source_key])).toEqual([["Bug sweep", `ai_suggestion:${id}:0`], ["Features", `ai_suggestion:${id}:1`]]);
+    const placed = await all<{ number: number; sprint_id: number | null }>(env.DB, `SELECT number, sprint_id FROM tickets WHERE org_id = ? ORDER BY number`, ORG_A);
+    expect(placed.filter((x) => x.sprint_id === sprints[0].id).map((x) => x.number)).toEqual([t[0], t[2], t[4]]);
+    expect(placed.filter((x) => x.sprint_id === sprints[1].id).map((x) => x.number)).toEqual([t[1], t[3]]);
+  });
 });
 
 describe("the weekly narrative proposal — Batch API; an admin's accept is a `write_plan` as that admin", () => {

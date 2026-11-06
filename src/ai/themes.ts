@@ -21,10 +21,9 @@
 import { z } from "zod";
 import type { TenantContext } from "../data/sql";
 import type { DirtyScope } from "../data/ai-dirty";
-import { putSuggestion } from "../data/ai";
 import {
-  THEME_ITEM_TYPE, THEME_SUGGESTION_KIND, cardedPrCount, insertCaption, insertProposedThemes, lastActivationAt, lastProposalAt,
-  latestCaption, mergedPr, mergedPrsSince, openThemeSuggestions, putAiPrThemes, repoThemes, themeItemRef, type MergedPrRow, type ThemeRow,
+  cardedPrCount, insertCaption, insertProposedThemes, lastActivationAt, lastProposalAt,
+  latestCaption, mergedPr, mergedPrsSince, openThemeSuggestions, putAiPrThemes, repoThemes, type MergedPrRow, type ThemeRow,
 } from "../data/themes";
 import { orgPrimaryRepo } from "../repo/config";
 import { TROV_SYSTEM_HANDLE, type AiCite } from "@shared/ai-core";
@@ -150,17 +149,17 @@ export const themesProposeJob: ClaudeJob<ProposeInput, ProposeOutput> = {
     if (!valid.length) return [];
     const colors = freeColors(i.usedColors, valid.length);
     const byNumber = new Map(i.prs.map((p) => [p.number, p]));
+    // Each theme and its suggestion (the admin's card) in ONE batch: never a theme without its card.
     const ids = await insertProposedThemes(ctx, i.repo,
       valid.map((t, k) => ({ name: t.name, description: t.description, colorKey: colors[k], position: i.active.length + k, seedPrs: t.prs })),
-      { createdBy: TROV_SYSTEM_HANDLE, model: meta.model, promptVersion: themesProposeJob.promptVersion });
-    for (const [k, id] of ids.entries()) {
-      const t = valid[k];
-      await putSuggestion(ctx, {
-        itemType: THEME_ITEM_TYPE, itemRef: themeItemRef(i.repo, id), kind: THEME_SUGGESTION_KIND,
-        value: { name: t.name, description: t.description }, confidence: null, reason: t.description,
-        cites: t.prs.slice(0, 5).map((n) => prCite(byNumber.get(n)!)), model: meta.model, promptVersion: themesProposeJob.promptVersion,
+      { createdBy: TROV_SYSTEM_HANDLE, model: meta.model, promptVersion: themesProposeJob.promptVersion }, undefined,
+      (_, k) => {
+        const t = valid[k];
+        return {
+          value: { name: t.name, description: t.description }, reason: t.description,
+          cites: t.prs.slice(0, 5).map((n) => prCite(byNumber.get(n)!)), model: meta.model, promptVersion: themesProposeJob.promptVersion,
+        };
       });
-    }
     return ids.length ? [item.scope.key] : [];
   },
 };

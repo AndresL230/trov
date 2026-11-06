@@ -43,7 +43,10 @@ const refuse = (error: AiSuggestionError, message?: string | null): SuggestionAn
  * kind with no handler `not_available`; a person below the handler's role `forbidden`; a body the contract
  * refuses (`body` null) `invalid`. Then the row is CLAIMED (one guarded
  * UPDATE, so two people pressing at once cannot both apply it), the handler writes, and on its throw the
- * claim is undone.
+ * claim is undone. A handler that writes in more than one step is therefore IDEMPOTENT per suggestion (a drafted
+ * sprint is keyed by the suggestion — ./roadmap-accept.ts; a theme moves with its seeds in one batch and an Accept
+ * finishes a theme already moved — ./themes-accept.ts), so pressing Accept again after a failure never applies twice.
+ * (A Worker that dies between the claim and the write leaves it accepted with nothing applied: not recovered.)
  */
 export async function acceptSuggestion(
   ctx: TenantContext, id: number, body: { value?: unknown } | null, handlers: Readonly<Record<string, AcceptHandler>> = AI_ACCEPT_HANDLERS,
@@ -89,7 +92,7 @@ export async function dismissSuggestion(
   const handler = Object.hasOwn(handlers, row.kind) ? handlers[row.kind] : undefined;
   if ((handler?.dismissRole ?? handler?.role ?? "member") === "admin" && !hasRole(ctx, "admin")) return refuse("forbidden");
   const at = nowIso();
-  if (!(await decideSuggestion(ctx, id, "dismissed", ctx.userId, at))) return refuse("not_open");
+  if (!(await decideSuggestion(ctx, id, "dismissed", ctx.userId, at, handler?.dismissWith?.(ctx, row, at) ?? []))) return refuse("not_open");
   // Dismiss is also a "this is wrong" for the evals (Q22): never fails the dismissal.
   await recordFeedback(ctx, ctx.userId, { itemType: "suggestion", itemRef: aiItemRef.suggestion(id), kind: row.kind, model: row.model, promptVersion: row.prompt_version }, at)
     .catch((e: unknown) => console.error("ai suggestion: dismiss feedback failed", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`));

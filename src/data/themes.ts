@@ -9,7 +9,7 @@
 // PRs are read from `events` (`pr_merged`) by ORG, not by its `repo` column: that column still carries
 // 0042_organizations' constant default (nothing writes it), and a merged PR the gate captured is always the org's
 // primary repository's (the router's `pr_merged` row). Themes and PR themes ARE keyed by the repository.
-import { all, batch, first, nowIso, run, stmt, type TenantContext } from "./sql";
+import { all, batch, first, nowIso, run, stmt, type Stmt, type TenantContext } from "./sql";
 
 export const THEME_STATUSES = ["proposed", "active", "removed"] as const;
 export type ThemeStatus = (typeof THEME_STATUSES)[number];
@@ -82,30 +82,62 @@ export async function lastActivationAt(ctx: TenantContext, repo: string): Promis
 
 export interface NewTheme { name: string; description: string; colorKey: string; position: number; seedPrs: number[] }
 
-/** Insert proposed themes, each as `proposed` by `createdBy`, in ONE batch. Returns their ids in order. */
+/** A proposed theme's suggestion (the admin's card): what `ai_suggestions` stores beside the theme. */
+export interface ThemeCard { value: unknown; reason: string; cites: unknown[]; model: string | null; promptVersion: string | null }
+
+/** Insert proposed themes, each as `proposed` by `createdBy`, in ONE batch — with `card(t, k)`, each theme's open
+ *  suggestion in that same batch (`<repo>#<its new id>`, kind `themes.propose`): a theme never exists without its card,
+ *  nor a card without its theme. Returns their ids in order. */
 export async function insertProposedThemes(
   ctx: TenantContext, repo: string, themes: readonly NewTheme[], meta: { createdBy: string; model: string | null; promptVersion: string | null }, at: string = nowIso(),
+  card?: (t: NewTheme, k: number) => ThemeCard,
 ): Promise<number[]> {
   if (!themes.length) return [];
-  const res = await batch<{ id: number }>(ctx, themes.map((t) => stmt(ctx,
-    `INSERT INTO repo_themes (org_id, repo, name, description, color_key, status, position, seed_prs, model, prompt_version, created_by, created_at)
-     VALUES (?, ?, ?, ?, ?, 'proposed', ?, ?, ?, ?, ?, ?) RETURNING id`,
-    ctx.orgId, repo, t.name, t.description, t.colorKey, t.position, JSON.stringify(t.seedPrs), meta.model, meta.promptVersion, meta.createdBy, at)));
-  return res.map((r) => r.results?.[0]?.id ?? 0).filter((id) => id > 0);
+  const stmts = themes.flatMap((t, k) => {
+    const theme = stmt(ctx,
+      `INSERT INTO repo_themes (org_id, repo, name, description, color_key, status, position, seed_prs, model, prompt_version, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, 'proposed', ?, ?, ?, ?, ?, ?) RETURNING id`,
+      ctx.orgId, repo, t.name, t.description, t.colorKey, t.position, JSON.stringify(t.seedPrs), meta.model, meta.promptVersion, meta.createdBy, at);
+    if (!card) return [theme];
+    const c = card(t, k);
+    // The theme just inserted, found by what makes it unique among live themes (its repo and name).
+    return [theme, stmt(ctx,
+      `INSERT INTO ai_suggestions (org_id, item_type, item_ref, kind, value_json, confidence, reason, cites_json, model, prompt_version, state, created_at)
+       SELECT ?, ?, repo || '#' || id, ?, ?, NULL, ?, ?, ?, ?, 'open', ? FROM repo_themes
+        WHERE org_id = ? AND repo = ? AND name = ? COLLATE NOCASE AND status = 'proposed' AND created_at = ?`,
+      ctx.orgId, THEME_ITEM_TYPE, THEME_SUGGESTION_KIND, JSON.stringify(c.value ?? null), c.reason, JSON.stringify(c.cites), c.model, c.promptVersion, at,
+      ctx.orgId, repo, t.name, at)];
+  });
+  const res = await batch<{ id: number }>(ctx, stmts);
+  const step = card ? 2 : 1;
+  return themes.map((_, k) => res[k * step]?.results?.[0]?.id ?? 0).filter((id) => id > 0);
+}
+
+/** A theme's seed PRs written as theme `themeId`'s (`seedPrThemes`), as statements for a caller's batch — each runs
+ *  only while `guard` (SQL over the batch's own earlier writes) holds. */
+function seedStmts(ctx: TenantContext, theme: Pick<ThemeRow, "repo" | "seed_prs" | "model" | "prompt_version">, themeId: number, at: string, guard: string, guardBinds: unknown[]): Stmt[] {
+  return seedPrsOf(theme).map((pr) => stmt(ctx,
+    `INSERT INTO pr_themes (org_id, repo, pr_number, theme_id, source, confidence, model, prompt_version, set_by, set_at)
+     SELECT ?, ?, ?, ?, 'ai', NULL, ?, ?, NULL, ? WHERE ${guard} ON CONFLICT(org_id, repo, pr_number) DO NOTHING`,
+    ctx.orgId, theme.repo, pr, themeId, theme.model, theme.prompt_version, at, ...guardBinds));
 }
 
 /** Make a PROPOSED theme active (with a new name, for Rename) as `by`. false = it was not proposed (or the name
- *  is taken: the unique index refuses, and the caller says so). */
-export async function activateTheme(ctx: TenantContext, id: number, by: string, at: string, name?: string): Promise<boolean> {
-  const res = name === undefined
-    ? await run(ctx, `UPDATE repo_themes SET status = 'active', decided_by = ?, decided_at = ? WHERE id = ? AND org_id = ? AND status = 'proposed'`, by, at, id, ctx.orgId)
-    : await run(ctx, `UPDATE repo_themes SET status = 'active', name = ?, decided_by = ?, decided_at = ? WHERE id = ? AND org_id = ? AND status = 'proposed'`, name, by, at, id, ctx.orgId);
-  return (res.meta.changes ?? 0) > 0;
+ *  is taken: the unique index refuses, and the caller says so). With `seed` (the theme as proposed), its seed PRs are
+ *  written as the active theme's in the SAME batch (Q-S3) — the lane never turns active without them. */
+export async function activateTheme(ctx: TenantContext, id: number, by: string, at: string, name?: string, seed?: Pick<ThemeRow, "repo" | "seed_prs" | "model" | "prompt_version">): Promise<boolean> {
+  const activate = name === undefined
+    ? stmt(ctx, `UPDATE repo_themes SET status = 'active', decided_by = ?, decided_at = ? WHERE id = ? AND org_id = ? AND status = 'proposed'`, by, at, id, ctx.orgId)
+    : stmt(ctx, `UPDATE repo_themes SET status = 'active', name = ?, decided_by = ?, decided_at = ? WHERE id = ? AND org_id = ? AND status = 'proposed'`, name, by, at, id, ctx.orgId);
+  const res = await batch(ctx, [activate, ...(seed ? seedStmts(ctx, seed, id, at,
+    `EXISTS (SELECT 1 FROM repo_themes WHERE id = ? AND org_id = ? AND status = 'active' AND decided_at = ?)`, [id, ctx.orgId, at]) : [])]);
+  return (res[0].meta.changes ?? 0) > 0;
 }
 
 /** Fold PROPOSED theme `id` into theme `into` (same repository, not removed): `id` is removed, recorded as merged,
- *  and its seed PRs join `into`'s. false = either is not what it must be. */
-export async function mergeTheme(ctx: TenantContext, id: number, into: number, by: string, at: string): Promise<boolean> {
+ *  and its seed PRs join `into`'s. false = either is not what it must be. With `seed` (the folded theme as proposed),
+ *  its seed PRs are written as `into`'s — when `into` is ACTIVE — in the SAME batch. */
+export async function mergeTheme(ctx: TenantContext, id: number, into: number, by: string, at: string, seed?: Pick<ThemeRow, "repo" | "seed_prs" | "model" | "prompt_version">): Promise<boolean> {
   const res = await batch(ctx, [
     stmt(ctx, `UPDATE repo_themes SET seed_prs = (
                  SELECT json_group_array(n) FROM (
@@ -118,6 +150,11 @@ export async function mergeTheme(ctx: TenantContext, id: number, into: number, b
                 WHERE id = ?1 AND org_id = ?2 AND status = 'proposed' AND ?1 <> ?3
                   AND EXISTS (SELECT 1 FROM repo_themes t WHERE t.id = ?3 AND t.org_id = ?2 AND t.status <> 'removed' AND t.repo = repo_themes.repo)`,
     id, ctx.orgId, into, by, at),
+    // Its PRs join an active lane, which counts from pr_themes: they count there at once (Q-S3) — only once the fold
+    // above happened, and only into an active theme.
+    ...(seed ? seedStmts(ctx, seed, into, at,
+      `EXISTS (SELECT 1 FROM repo_themes m WHERE m.id = ? AND m.org_id = ? AND m.status = 'removed' AND m.merged_into = ? AND m.decided_at = ?)
+       AND EXISTS (SELECT 1 FROM repo_themes a WHERE a.id = ? AND a.org_id = ? AND a.status = 'active')`, [id, ctx.orgId, into, at, into, ctx.orgId]) : []),
   ]);
   return (res[1].meta.changes ?? 0) > 0;
 }
@@ -126,6 +163,13 @@ export async function mergeTheme(ctx: TenantContext, id: number, into: number, b
 export async function removeTheme(ctx: TenantContext, id: number, by: string, at: string): Promise<boolean> {
   const res = await run(ctx, `UPDATE repo_themes SET status = 'removed', decided_by = ?, decided_at = ? WHERE id = ? AND org_id = ? AND status = 'proposed'`, by, at, id, ctx.orgId);
   return (res.meta.changes ?? 0) > 0;
+}
+
+/** `removeTheme` as a statement for the dismissal's own batch: it runs only once `suggestionId` was dismissed by `by`
+ *  at `at` (`guard`: `SUGGESTION_DECIDED_SQL` and its binds), so the card and its theme move together. */
+export function removeThemeStmt(ctx: TenantContext, id: number, by: string, at: string, guard: { sql: string; binds: unknown[] }): Stmt {
+  return stmt(ctx, `UPDATE repo_themes SET status = 'removed', decided_by = ?, decided_at = ? WHERE id = ? AND org_id = ? AND status = 'proposed' AND ${guard.sql}`,
+    by, at, id, ctx.orgId, ...guard.binds);
 }
 
 /** The open theme suggestions, by theme id. */
