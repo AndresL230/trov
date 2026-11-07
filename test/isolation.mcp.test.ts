@@ -91,6 +91,8 @@ interface Fixture {
   org: Org; tag: Tag; token: string;
   sprint: number; ticket: number; child: number; handoff: number; artifact: string;
   doc: string; prompt: string;
+  /** An `org` project dana owns, pinning the ticket — its slug comes from its canary name, so it is this org's alone. */
+  project: string;
   /** An OPEN agent link dana → ONLY[org], dana's side bound to `linkSession`, with an undelivered note to it. */
   link: number; linkSession: string;
 }
@@ -146,8 +148,10 @@ async function seedOrg(org: Org): Promise<Fixture> {
     const handoff = (await ok<{ id: number }>("send_handoff", { body: c("handoff"), context: { repo: "x/y", branch: "main", task: c("handoff_task"), done: [c("handoff_done")], next: [], files: [] }, prompt: { title: c("handoff_prompt"), body: c("handoff_prompt_body") } })).id;
     const artifact = (await ok<{ slug: string }>("upload_asset", { title: c("artifact"), kind: "markdown", area: "api", repo: "", visibility: "org", content: c("artifact_body"), summary: c("artifact_summary"), links: [{ target_type: "ticket", target_ref: String(ticket) }] })).slug;
     await ok("update_plan", { ...narr(c("narrative")), sprints: [] });
+    const project = (await ok<{ slug: string }>("create_project", { name: c("project"), description: c("project_desc"), instructions: c("project_instructions"), visibility: "org" })).slug;
+    await ok("add_to_project", { project, refs: [`ticket:${ticket}`, `artifact:${artifact}`] });
     const link = (await ok<{ id: number }>("request_link", { target: { person: ONLY[org] }, reason: c("link_reason"), session: `iso-link-${tag}` })).id;
-    return { sprint, ticket, child, handoff, artifact, link };
+    return { sprint, ticket, child, handoff, artifact, link, project };
   });
   // The person steps have no tool: sent, accepted and joined through the domain layer; ONLY[org]'s note waits for dana.
   const as = (h: string) => tenantCtx(h, undefined, { orgId: org });
@@ -278,6 +282,17 @@ const MATRIX: Record<string, Entry> = {
   search_prompts: () => [read(), read({ q: "canary" }), read({ tags: ["api"] })],
   get_prompt: (o) => [refused({ slug: o.prompt, vars: { name: "x" } }), { args: { slug: SHARED_PROMPT }, expect: "own", sees: true }],
   save_prompt: (o) => [{ args: { slug: o.prompt, title: "t", body: "a prompt of the same slug, in my own org" }, expect: "own" }],
+  // projects (0086): the other org's project is the one not_found; a ref of the other org's names nothing here.
+  list_projects: () => [read(), read({ q: "canary" })],
+  get_project: (o) => [refused({ project: o.project })],
+  create_project: () => [{ args: { name: "made under the other token" }, expect: "own" }],
+  edit_project: (o) => [refused({ project: o.project, instructions: "pwned" })],
+  add_to_project: (o, m) => [
+    refused({ project: o.project, refs: [`ticket:${m.ticket}`] }),
+    refused({ project: m.project, refs: [`ticket:${o.ticket}`] }),
+    refused({ project: m.project, refs: [`artifact:${o.artifact}`] }),
+  ],
+  remove_from_project: (o) => [refused({ project: o.project, refs: [`ticket:${o.ticket}`] })],
   // agent links (0078): the other org's link is not found; a person there is not a member here; its session's notes
   // are never read — `link_inbox` finds an org by session only among the token's own (`resolveLinkSession`).
   request_link: (o) => [
