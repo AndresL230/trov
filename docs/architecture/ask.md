@@ -151,8 +151,10 @@ live order — a row stored before it has none and reads as text, blocks, cards.
 The MCP catalog (definitions from `shared/mcp-tools.generated.ts`, less `repo` / `org` / `session`), calling the same
 `src/tools/*` functions with the cookie person's context — `src/ai/ask/**` never imports `src/mcp.ts`, and nothing
 MCP reaches imports `src/ai/`. Excluded (`ASK_EXCLUDED_TOOLS`): `switch_org`, `get_connection`, `record_session`,
-`upload_asset`, `delete_sprint` (a delete is a person's step), and `link_inbox` ("Ask reads link notes in its own
-turn" — › Agent links). Admin-only tools are offered only to an admin. Besides `session`, Ask fills a link tool's
+`upload_asset`, `delete_sprint` (a delete is a person's step), `link_inbox` ("Ask reads link notes in its own
+turn" — › Agent links), and the six project tools (`list_projects`, `get_project`, `create_project`, `edit_project`,
+`add_to_project`, `remove_from_project`: a thread in a project reads it every turn, and a project is changed on its own
+page — `projects.md` › Over MCP). Admin-only tools are offered only to an admin. Besides `session`, Ask fills a link tool's
 `kind` (always `ask`) and `branch` (none), so `request_link` / `join_link` are offered without them
 (`ASK_FILLED_ARGS`); the link tools carry Ask's own descriptions (`ASK_DESCRIPTIONS`: the thread is the side,
 Confirm is the Send) over MCP's input schemas.

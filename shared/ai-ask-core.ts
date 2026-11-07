@@ -606,6 +606,14 @@ export const ASK_EXCLUDED_TOOLS: Record<string, string> = {
   // Agent links (0078): an Ask thread is a side — request_link / join_link / send_link_note / close_link are its
   // Confirm-only cards and list_links a read (src/ai/ask/actions.ts, tools.ts). Its notes reach it in the turn.
   link_inbox: "Ask reads link notes in its own turn.",
+  // Projects (0086): a thread IN a project reads its instructions and pins in every turn (src/ai/ask/project.ts), and
+  // the project is changed on its own page — the agent-side tools are for MCP clients.
+  list_projects: "a thread reads its own project in every turn",
+  get_project: "a thread reads its own project in every turn",
+  create_project: "a project is started on the Projects page",
+  edit_project: "a project is changed on its own page",
+  add_to_project: "a project's pins are added on its own page",
+  remove_from_project: "a project's pins are removed on its own page",
 };
 
 /** Ask's own tools, on top of the MCP catalog. */

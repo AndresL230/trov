@@ -19,10 +19,12 @@ describe("the MCP parity", () => {
     const both = names.filter((n) => n in ASK_TOOLS && n in ASK_EXCLUDED_TOOLS);
     expect(neither, "an MCP tool is neither wired into Ask nor in ASK_EXCLUDED_TOOLS").toEqual([]);
     expect(both).toEqual([]);
-    // The design's exclusions, the one this build adds (a delete is a person's step), and `link_inbox`: an Ask thread
-    // is a side of an agent link, and reads its notes in its own turn (the other five link tools are wired).
+    // The design's exclusions, the one this build adds (a delete is a person's step), `link_inbox`: an Ask thread
+    // is a side of an agent link, and reads its notes in its own turn (the other five link tools are wired), and the
+    // six project tools: a thread in a project reads it every turn, and a project is changed on its own page.
     expect(Object.keys(ASK_EXCLUDED_TOOLS).sort()).toEqual([
-      "delete_sprint", "get_connection", "link_inbox", "record_session", "switch_org", "upload_asset",
+      "add_to_project", "create_project", "delete_sprint", "edit_project", "get_connection", "get_project", "link_inbox", "list_projects",
+      "record_session", "remove_from_project", "switch_org", "upload_asset",
     ]);
     expect(ASK_EXCLUDED_TOOLS.link_inbox).toBe("Ask reads link notes in its own turn.");
     for (const n of ["request_link", "join_link", "send_link_note", "close_link", "list_links"]) expect(n in ASK_TOOLS, n).toBe(true);
