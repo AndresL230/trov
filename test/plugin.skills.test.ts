@@ -11,9 +11,9 @@ const SKILLS: Record<string, string> = Object.fromEntries(
 const allowed = (text: string): string[] => (/^allowed-tools: (.*)$/m.exec(text)?.[1] ?? "").split(", ").map((t) => t.trim());
 
 describe("the Trov plugin's skills and the organization a call acts in", () => {
-  it("ships the eleven skills, at the version the release notes name", () => {
-    expect(Object.keys(SKILLS).sort()).toEqual(["artifacts", "handoff", "link", "load-context", "my-work", "prompts", "read-plan", "record-session", "tickets", "trov", "update-plan"]);
-    expect(plugin.version).toBe("0.12.1");
+  it("ships the twelve skills, at the version the release notes name", () => {
+    expect(Object.keys(SKILLS).sort()).toEqual(["artifacts", "handoff", "link", "load-context", "my-work", "projects", "prompts", "read-plan", "record-session", "tickets", "trov", "update-plan"]);
+    expect(plugin.version).toBe("0.13.0");
   });
 
   // GitHub #183: `disable-model-invocation: true` kept these four from firing at a stopping point, but it also blocked a

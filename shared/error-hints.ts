@@ -15,7 +15,7 @@ export const MCP_ERROR_HINTS: Readonly<Record<string, string>> = {
   not_found:
     "Nothing with that id or slug that you can see here. A missing item and one you may not see answer the same, on purpose. A ticket's or handoff's id is its number in the organization (#12): list first (list_tickets, list_sprints, list_handoffs, artifact_list, search_prompts, query) and use an id from the result.",
   forbidden:
-    "Outside what you may do, so nothing was written. Ticket writes need the ticket to be assigned to you already (filing with create_ticket is open; assign_ticket is for an admin, the requester or a current assignee), and update_plan is for admins. Ask the person you work for to assign it to you, or to do it in the Trov web app.",
+    "Outside what you may do, so nothing was written. Ticket writes need the ticket to be assigned to you already (filing with create_ticket is open; assign_ticket is for an admin, the requester or a current assignee), a project is changed only by its owner and editors, and update_plan is for admins. Ask the person you work for to assign it to you, or to do it in the Trov web app.",
   conflict:
     "The item's current state does not allow this (it is already in that state, someone else claimed it, or the move would break a rule such as one level of sub-tickets). Nothing was written. Read it again (get_ticket, get_sprint, get_handoff) before deciding what to do.",
   bad_request:

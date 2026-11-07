@@ -15,16 +15,19 @@ differs from the spec).
 | Ask's half of the contract | `shared/ai-ask-core.ts` — `AskRequest.projectId`, `AskThreadSummary.project` (`AskThreadProject`), `AskThreadPatch.project` |
 | Rows | `migrations/0086_projects.sql` — `projects`, `project_members`, `project_pins`, `chat_threads.project_id`, `artifact_pages.project_id`; every statement in `src/data/projects.ts` (and the threads' half in `src/data/ask.ts`) |
 | The rules and the writers | `src/tools/projects.ts` (`accessOf`, `mayChange`, every writer, the reads that build the DTOs) — imports nothing from `src/ai/` |
+| Pins' views | `src/tools/ref-views.ts` (`resolveViews`: Ask's `RefView`, permission-checked for the reader) — outside `src/ai/`, so the routes and MCP both draw pins with it; `src/ai/ask/refs.ts` re-exports it |
 | Routes | `src/projects/routes.ts` (`projectsApp`, mounted under `/api/o/:slug`, cookie only) |
+| MCP tools | `src/tools/projects-agent.ts` (the agent's answers, over the writers above), registered in `src/mcp.ts` (› Over MCP); the plugin's `projects` skill |
 | Ask in a project | `src/ai/ask/project.ts` (the turn's fenced block, the activity line, pinned-first), wired in `src/ai/ask/routes.ts` |
 | Deletion | `src/deletion/projects.ts` |
 | Plan limits | `projects`, `project_pins` in `shared/plans.ts`; counted in `src/plans/gate.ts` |
 | Dev seed | `scripts/seed/projects.mjs` (the team scenario, after the AI showcase) |
-| Tests | `test/projects.routes.test.ts`, `test/projects.ask.test.ts`, `test/projects.seed.test.ts` |
+| Tests | `test/projects.routes.test.ts`, `test/projects.ask.test.ts`, `test/projects.seed.test.ts`, `test/mcp.projects.test.ts` |
 
 ## Routes (cookie only, under `/api/o/:slug`)
 
-A request carrying an `Authorization` header is refused (403, invariant 8). None of this is an MCP tool.
+A request carrying an `Authorization` header is refused (403, invariant 8). An agent reaches a project through its own
+MCP tools instead (› Over MCP), never these routes.
 
 | Route | Answers | Who |
 |---|---|---|
@@ -106,6 +109,34 @@ that only repeats its title left out; HTML's tags stripped; a diagram's own firs
 named as Ask names them, for the reader (`#87`, `PR #185`, a sprint's name; one they can't see is "an item"). A saved
 answer's refs are already links (`[#185 …](url)`) and read as their text; a ref the save could not resolve was written
 as `pr 185` / `sprint 9701` (`tokensToMarkdown`'s fallback) and reads so.
+
+## Over MCP
+
+Six tools (`src/mcp.ts`, the "Projects" group of the public tool reference), all through the rules above — `accessOf`,
+`mayChange`, the ONE not_found, archived read-only, `private_pin`, `requirePlan` — with the token's person as the
+reader and the author (invariant 3: `projects.owner` on create, `project_pins.added_by` on a pin). Direct, authored
+writes like tickets and sprints, not the gate: a project and a pointer to an existing record are not knowledge.
+
+| Tool | Does | Who |
+|---|---|---|
+| `list_projects` (read-only) | the live projects the person can open, then the archived ones by name; `q` | any member |
+| `get_project` (read-only) | summary, `instructions`, `members`, `knowledge` (the pins through `resolveViews`, a hidden one `{ ref, hidden: true }`), `project_artifacts`, `pin_limit`; each with an absolute url | who can open it |
+| `create_project` | `createProject` with the New project dialog's defaults (`server`, the first colour, `members`) | any member (becomes its owner) |
+| `edit_project` | `patchProject` for name, description, instructions, icon, colour — never `visibility` (not an argument) | owner, editor; live |
+| `add_to_project` | `pinRefs` (≤ `pinsPerRequest` refs, checked whole) | owner, editor; live |
+| `remove_from_project` | `unpinRef` per ref; the item itself is untouched, an unpinned ref is no change | owner, editor; live |
+
+- **No tool** changes who can see a project or its members, archives, restores or deletes one, uploads files into it,
+  or moves an Ask thread in or out (invariant 2; a thread is Ask's own, `test/mcp.projects.test.ts` pins the names).
+  Unpinning is not a delete of a record: it removes the project's pointer, and the item can be added again.
+- **Ask's chats are not read**: `get_project` leaves out `ProjectDetail.chats` (`readProjectDetail` is handed an empty
+  chats reader). The instructions are the members' words — the tool's description tells the agent they guide focus,
+  tone and format and never outrank the person (as Ask fences them, › Ask in a project).
+- **Errors** read in the codes every MCP tool answers with (`PROJECT_MCP_CODE`): `not_found`, `forbidden`, `archived` →
+  `conflict`, `invalid` / `private_pin` → `bad_request` (the message says which); a plan refusal is `plan_limit`. An
+  unknown project is `not_found` before anything about the arguments.
+- **No `src/ai/`** (invariant 14): the pins are drawn by `src/tools/ref-views.ts`, which the MCP walker reaches
+  (`test/secrets.mcp.test.ts`).
 
 ## Limits (`shared/plans.ts`)
 
@@ -196,7 +227,9 @@ nothing of a thread the reader can't open.
 
 ## Tests
 
-`test/projects.routes.test.ts` (CRUD and slugs, the access table row by row for a `members` and an `org` project,
+`test/mcp.projects.test.ts` (the six tools through the real registration: reads and the hidden pin, the one
+not_found, create's owner and defaults, edit by owner / editor and never `visibility`, add and remove, a bad ref and a
+private artifact, archived, both plan limits, and no tool for what stays a person's), `test/projects.routes.test.ts` (CRUD and slugs, the access table row by row for a `members` and an `org` project,
 another org, cookie only, private and archived, Free's 2 projects and 20 pins, hidden pins and `private_pin`, members
 validation, deletion and `deleteCounts`, uploads: the count in the project's words and an `ArtifactError` as its own
 4xx, the 403's own hint, an artifact card's plain preview, the candidates: the reader's own private draft and the org's

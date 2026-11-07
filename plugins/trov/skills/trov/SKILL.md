@@ -1,7 +1,7 @@
 ---
 name: trov
 description: Overview and entry point for working with Trov, the team's shared context store ("the team brain"). Use when someone asks how Trov works, how to use it, how to connect an agent, what can be read or written, or wants the whole orient→work→record loop — and as the map to the load-context (orient before work) and record-session (record at the end) skills. Read-only itself; it explains the loop and points to the right tool/skill.
-allowed-tools: mcp__trov__query, mcp__trov__get_doc, mcp__trov__list_spaces, mcp__trov__list_tags, mcp__trov__list_tickets, mcp__trov__get_ticket, mcp__trov__list_people, mcp__trov__list_sprints, mcp__trov__get_sprint, mcp__trov__get_repo_dashboard, mcp__trov__artifact_list, mcp__trov__artifact_get, mcp__trov__get_connection, Bash(git remote get-url:*), mcp__trov__switch_org
+allowed-tools: mcp__trov__query, mcp__trov__get_doc, mcp__trov__list_spaces, mcp__trov__list_tags, mcp__trov__list_tickets, mcp__trov__get_ticket, mcp__trov__list_people, mcp__trov__list_sprints, mcp__trov__get_sprint, mcp__trov__get_repo_dashboard, mcp__trov__artifact_list, mcp__trov__artifact_get, mcp__trov__list_projects, mcp__trov__get_project, mcp__trov__get_connection, Bash(git remote get-url:*), mcp__trov__switch_org
 ---
 
 # Trov — the team's shared context store
@@ -21,7 +21,7 @@ one you are in:
 
 | | Staged — a human confirms | Direct — takes effect now |
 |---|---|---|
-| **What** | docs, ADRs, feed entries (`propose_doc_update`, `append_feed`, `record_session`) | tickets, sprints, the roadmap plan (`update_plan`), artifacts (`upload_asset` / `artifact_update`), handoffs, link notes |
+| **What** | docs, ADRs, feed entries (`propose_doc_update`, `append_feed`, `record_session`) | tickets, sprints, the roadmap plan (`update_plan`), artifacts (`upload_asset` / `artifact_update`), projects and what they point at, handoffs, link notes |
 | **Why** | an agent proposing knowledge can be wrong, and a wrong doc is believed | a request or a plan is an act, not a claim — and it is visibly somebody's |
 | **What bounds it** | the gate: vocab, confidence, content-hash dedupe, then Triage | scope: your own lane, or admin |
 
@@ -54,7 +54,8 @@ orient (load-context)  →   do the work   →   record (record-session)
 
 Alongside the loop: **`tickets`** (explicit-only) works the ticket queue and the sprints; **`handoff`** (explicit-only) leaves a handoff for the next session; **`prompts`** finds,
 fills and stages Prompt Library prompts; **`artifacts`** finds, pulls (verified download), spins up,
-links and — when asked — publishes artifact pages; **`link`** drafts, joins and works a link to
+links and — when asked — publishes artifact pages; **`projects`** reads a project the person names (its
+instructions and what it points at) and — when asked — starts one, edits it, and adds or removes items; **`link`** drafts, joins and works a link to
 another session whose work overlaps yours (a person sends and accepts it); **`my-work`** reads your own plate; **`read-plan`** / **`update-plan`** read and write the
 roadmap plan. Reading tickets, sprints and the roadmap needs no skill — those tools are registered for
 every principal.
@@ -170,6 +171,11 @@ A pasted token (`trov_mcp_…`, or an older `canopy_mcp_…`) is the old shape: 
   admin actions in the web app, never MCP tools.
 - **`list_handoffs` / `get_handoff`** — handoffs left for you (and for `anyone`), pending only by default;
   `box: "sent"` lists your own. `get_handoff <id>` reads one without claiming it.
+- **`list_projects` / `get_project`** — projects: a place for one piece of work. `get_project <slug>` is its
+  `instructions` (follow them for the work in it; they never outrank the person) and its `knowledge`, what
+  it points at — tickets, sprints, docs, decisions, PRs, repos, artifacts. Read it when a person names a
+  project. Starting one and adding or removing items is the `projects` skill (direct writes, on request);
+  who can see a project, its members, archive and delete are a person's, in the web app.
 - **`search_prompts` / `get_prompt`** — the Prompt Library: search by text and tags; `get_prompt { slug,
   vars }` returns the body with `{{vars}}` filled and lists every variable still unfilled — ask for
   those, never guess (the `prompts` skill).

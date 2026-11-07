@@ -284,7 +284,8 @@
   `org_github_installations.suspension_at` / `.repos_changed_at` — `github-app.md`].
 - Projects: `shared/projects-core.ts` (zod-free: the vocabulary, limits, DTOs, `PROJECT_ROUTES`, `projectSlug`),
   `shared/projects.ts` (zod), `src/data/projects.ts` (the rows), `src/tools/projects.ts` (the access rule, the writers,
-  the reads), `src/projects/routes.ts` (the cookie routes at `/projects`), `src/ai/ask/project.ts` (Ask in a project),
+  the reads), `src/tools/projects-agent.ts` (the MCP tools' answers), `src/tools/ref-views.ts` (Ask's `RefView`, outside
+  `src/ai/` so MCP can draw pins), `src/projects/routes.ts` (the cookie routes at `/projects`), `src/ai/ask/project.ts` (Ask in a project),
   `src/deletion/projects.ts`, `scripts/seed/projects.mjs` (the team scenario's projects) — `projects.md`.
 - The Sample workspace: `src/orgs/sample.ts` (`createSampleOrg`, the one-per-person guard, the seed's statements,
   `reachesOutside` — the outbound routes a sample refuses), `src/orgs/sample-content.ts` (its made-up content, pure

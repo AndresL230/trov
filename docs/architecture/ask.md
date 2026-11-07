@@ -15,7 +15,7 @@ the allowances and the switches: `ai.md`.
 | Rows | `migrations/0058_server_ai.sql` › `0066_ask` / `0068_ask_pending`, `migrations/0076_10_17_staging.sql` › `0076_ask_sharing` (`chat_threads.shared_at`) / `0077_ask_people_sharing` (`chat_thread_people`, `asked_by`) / `0076_ask_github` (`orgs.ai_chat_github`); every statement in `src/data/ask.ts` |
 | Routes | `src/ai/ask/routes.ts` (`askApp`, mounted under `/api/o/:slug`, cookie only) |
 | The turn | `src/ai/ask/turn.ts` (stream, tool loop, cards, Auto) |
-| Tools | `src/ai/ask/tools.ts` (catalog, reads, show tools), `actions.ts` (writes), `charts.ts`, `docs.ts`, `refs.ts` (grounding + ref views), `attachments.ts`, `history.ts`, `prompt.ts`, `render.ts`, `diff.ts`, `context.ts`, `github.ts` (the GitHub tools — › GitHub; their credentialed transport is `src/repo/ask-github.ts`, handed in by `src/routes.ts`) |
+| Tools | `src/ai/ask/tools.ts` (catalog, reads, show tools), `actions.ts` (writes), `charts.ts`, `docs.ts`, `refs.ts` (grounding; the ref views themselves are `src/tools/ref-views.ts`, re-exported here), `attachments.ts`, `history.ts`, `prompt.ts`, `render.ts`, `diff.ts`, `context.ts`, `github.ts` (the GitHub tools — › GitHub; their credentialed transport is `src/repo/ask-github.ts`, handed in by `src/routes.ts`) |
 | Model client | `askChatClient(mode)` and the `ask.*` kinds in `src/ai/client.ts` |
 | Deletion | `src/deletion/ask.ts` (a thread and its attachments, and its agent-link sides), `src/deletion/person.ts` (an account's private attachments) — › Deletion and renames |
 | Agent links | `src/ai/ask/links.ts` (delivery into the turn), the four link cards in `actions.ts`, `list_links` in `tools.ts`; the rules are `src/tools/links.ts`'s — › Agent links |

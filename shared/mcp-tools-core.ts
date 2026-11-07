@@ -53,6 +53,11 @@ export const MCP_TOOL_GROUPS: readonly McpToolGroup[] = [
     tools: ["list_sprints", "get_sprint", "create_sprint", "set_sprint_active", "complete_sprint", "add_sprint_resource", "delete_sprint"],
   },
   {
+    key: "projects", label: "Projects",
+    blurb: "A place for one piece of work: its instructions and what it points at. An agent reads, creates and adds or removes items; who can see a project, its members, archiving and deleting stay a person's, in the web app.",
+    tools: ["list_projects", "get_project", "create_project", "edit_project", "add_to_project", "remove_from_project"],
+  },
+  {
     key: "handoffs", label: "Handoffs and prompts",
     blurb: "Notes from one session to the next, and the team's reusable prompts. A saved prompt is staged until a person publishes it.",
     tools: ["send_handoff", "list_handoffs", "get_handoff", "claim_handoff", "expire_handoff", "search_prompts", "get_prompt", "save_prompt"],

@@ -1,6 +1,7 @@
 // Projects over HTTP (0086_projects; docs/architecture/projects.md) — mounted at `/api/o/:slug` (`PROJECT_ROUTES`,
 // shared/projects-core.ts), COOKIE ONLY: a request carrying an Authorization header is refused (CLAUDE.md invariant 8),
-// and none of this is an MCP tool (projects' MCP tools are a later phase). `tenantGate` has resolved `c.var.ctx`.
+// and an agent never reaches these: its own MCP tools (src/tools/projects-agent.ts) go through the same rules in
+// src/tools/projects.ts. `tenantGate` has resolved `c.var.ctx`.
 //
 //   GET    /projects                      ProjectList (`?q=` filters by name and description)
 //   POST   /projects                      ProjectCreateBody → { project: ProjectSummary }
@@ -26,7 +27,7 @@ import {
   restoreProject, unpinRef, uploadIntoProject, type PinViews,
 } from "../tools/projects";
 import { deleteProject } from "../deletion/projects";
-import { resolveViews } from "../ai/ask/refs";
+import { resolveViews } from "../tools/ref-views";
 import { AttachError, checkFiles } from "../ai/ask/attachments";
 import { ArtifactError, ARTIFACT_ERROR_STATUS } from "../tools/artifacts";
 import { ASK_ATTACH_FILES_MAX } from "@shared/ai-ask-core";

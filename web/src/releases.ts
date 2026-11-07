@@ -104,6 +104,31 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Projects over MCP: one PR.
+  {
+    version: "0.18",
+    date: "2026-11-07",
+    title: "Projects for your coding agent",
+    headline: "Your coding agent can now find a project, read its instructions and what it points at, start one, and add or take out the work it rests on.",
+    highlights: [
+      "Name a project and your agent reads its instructions and pinned tickets, docs, PRs and artifacts before it works.",
+      "Ask your agent to start a project, or to change its name, description or instructions.",
+      "Your agent can add tickets, sprints, docs, decisions, PRs, repositories and artifacts to a project, or take them out.",
+      "Who can see a project, its members, archiving and deleting stay yours, in the web app.",
+    ],
+    ops: [
+      "Publish the Trov plugin 0.13.0: a new projects skill, and load-context reads a project when a person names one. Installed copies update on `/plugin marketplace update trov`.",
+    ],
+    patches: {
+      added: [
+        "Agents: list, read and create projects, edit their details and instructions, and add or remove pinned items over MCP (#226)",
+      ],
+      changed: [],
+      fixed: [],
+      removed: [],
+    },
+    prs: [226],
+  },
   // The state-machine fixes: one PR (#225), one migration.
   {
     version: "0.17",
