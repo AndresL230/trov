@@ -72,7 +72,7 @@ import {
   type TicketCategory, type TicketPriority, type TicketStatus,
 } from "@shared/tickets-core";
 import { decodeReviewId, reviewItemsFromReads } from "./triage-map";
-import { QUEUE_FILTER_CATS, declinedLeavers, type QueueFilterCat } from "./tickets";
+import { QUEUE_FILTER_CATS, QUEUE_SOURCES, declinedLeavers, type QueueFilterCat, type QueueSource } from "./tickets";
 import { AI_EXIT_MS } from "./ai-ui";
 import { initialOnboard, markAvatarFailed, AVATAR_IMG_CLASS } from "./people";
 import { prepareAvatar } from "./avatar";
@@ -467,6 +467,11 @@ try {
   if (fv === "reading" || fv === "agents") state.feedView = fv;
   const pv = localStorage.getItem("trov.promptView");
   if (pv === "raw" || pv === "rendered") state.promptView = pv;
+  // The ticket queue's view, as the person last picked it: the switch (Open hides Done) and the Source filter.
+  const qs = localStorage.getItem("trov.queueSeg");
+  if (qs === "all" || qs === "open" || qs === "closed") state.qSeg = qs;
+  const qsrc = localStorage.getItem("trov.queueSource");
+  if ((QUEUE_SOURCES as readonly string[]).includes(qsrc ?? "")) state.qSource = qsrc as QueueSource;
   const c = localStorage.getItem("trov.collapsed");
   if (c) state.collapsed = c === "1";
   const open = JSON.parse(localStorage.getItem("trov.navOpen") ?? "{}") as Record<string, unknown>;
@@ -3787,7 +3792,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
 
     // ── Tickets: the queue's filters + view toggle (every filter refetches) ──
     case "queueSeg":
-      if (arg === "open" || arg === "closed" || arg === "all") { state.qSeg = arg; loadTickets(); }
+      if (arg === "open" || arg === "closed" || arg === "all") { state.qSeg = arg; persist("trov.queueSeg", arg); loadTickets(); }
       return;
     // The queue's filter menu (tickets.ts `queueFilterMenu`, the shared filter-menu
     // registry opens/closes it): Assignee and Category refetch — the server filters
@@ -3817,9 +3822,14 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (arg === "all" || (TICKET_PRIORITIES as readonly string[]).includes(arg ?? "")) state.qPrio = arg as TicketPriority | "all";
       break;
     case "queueSprint": if (arg) state.qSprint = arg; break;
+    // Where a ticket came from: client-side over the loaded rows, kept per browser.
+    case "queueSource":
+      if ((QUEUE_SOURCES as readonly string[]).includes(arg ?? "")) { state.qSource = arg as QueueSource; persist("trov.queueSource", state.qSource); }
+      break;
     case "queueFilterClear": {
       const refetch = state.qAssignee !== "anyone" || state.qCategory !== "all";
       state.qAssignee = "anyone"; state.qCategory = "all"; state.qPrio = "all"; state.qSprint = "all"; state.qPerson = "";
+      state.qSource = "trov"; persist("trov.queueSource", "trov");
       if (refetch) { loadTickets(); return; }
       break;
     }

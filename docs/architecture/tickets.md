@@ -73,7 +73,16 @@ nowhere, then a timer drops it; nothing under reduced motion. The saved drag ord
 ticket keeps its `board_rank`, and a drop's placement is computed over its target column only
 (`test/render.tickets.test.ts` › the default view hides declined tickets).
 
-The queue's search box and Filter menu (Assignee incl. any one person, Category, Priority, Sprint)
+**The queue hides GitHub issues by default** (owner's ruling, 2026-11-16). Tickets MIRRORED from GitHub issues
+(`source = 'github'`) are left out of the board and the table unless the Filter menu's **Source** group says
+otherwise: Trov tickets (the default) / With GitHub issues / GitHub issues only (`QUEUE_SOURCES`, `inSource` in
+`web/src/tickets.ts`). Like declined, the narrowing is client-side and part of `segRows`, so every count is over what
+is shown (the Source options themselves count every source); the server's list, MCP `list_tickets`, sprint progress
+and My Work are unchanged. A non-default Source lights the Filter badge and Clear all puts it back. The Source pick
+and the Open / Closed / All switch are kept per browser (`trov.queueSource`, `trov.queueSeg`), so a person who wants
+Done off the board picks Open once; a typed filter sets the switch but never the Source.
+
+The queue's search box and Filter menu (Assignee incl. any one person, Category, Priority, Sprint, Source)
 are the Artifacts library's; Assignee (anyone / me / unassigned) and Category filter server-side, a person,
 Priority, Sprint and search narrow the loaded rows (`queueRows`). With the org's AI on, the Filter menu opens on a
 "Describe a filter" row (`ai.md` › The plain-language filter): the typed sentence's answer sets these same controls — the Open / Closed / All

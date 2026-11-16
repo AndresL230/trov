@@ -461,7 +461,7 @@ describe("queueView — the toolbar", () => {
       sprints: [sprint({ id: 12, label: "Sprint 12" })],
     }));
     expect(html).toContain('role="dialog" aria-label="Filter tickets"');
-    for (const k of ["assignee", "category", "priority", "sprint"]) expect(html).toContain(`data-fm-cat="${k}"`);
+    for (const k of ["assignee", "category", "priority", "sprint", "source"]) expect(html).toContain(`data-fm-cat="${k}"`);
     for (const [v, l] of [["anyone", "Any assignee"], ["me", "Assigned to me"], ["unassigned", "Unassigned"]]) {
       expect(html).toMatch(new RegExp(`data-act="queueAssignee" data-arg="${v}"[^>]*>[\\s\\S]*?${l}`));
     }
@@ -1505,10 +1505,28 @@ describe("mirrored tickets", () => {
 
   it("the queue row and board card carry a GitHub #n chip; a native row carries none", () => {
     const rows = [ticket({ id: 1, title: "Mirrored", ...SRC }), ticket({ id: 2, title: "Native" })];
-    const table = queueView(queueProps({ tickets: rows }));
+    const table = queueView(queueProps({ tickets: rows, source: "all" }));
     expect(table.match(/GitHub #214/g)).toHaveLength(1);
-    const board = queueView(queueProps({ tickets: rows, view: "board" } as Partial<QueueProps>));
+    const board = queueView(queueProps({ tickets: rows, view: "board", source: "all" } as Partial<QueueProps>));
     expect(board).toContain("GitHub #214");
+  });
+
+  it("the queue hides GitHub issues by default; the Source filter shows them beside Trov's, or alone", () => {
+    const rows = [ticket({ id: 1, title: "Mirrored", ...SRC }), ticket({ id: 2, title: "Native" })];
+    for (const view of ["table", "board"] as const) {
+      const html = queueView(queueProps({ tickets: rows, view }));
+      expect(html).not.toContain("Mirrored");
+      expect(html).toContain("Native");
+    }
+    expect(queueRows(queueProps({ tickets: rows })).map((t) => t.id)).toEqual([2]);
+    expect(queueRows(queueProps({ tickets: rows, source: "all" })).map((t) => t.id).sort()).toEqual([1, 2]);
+    expect(queueRows(queueProps({ tickets: rows, source: "github" })).map((t) => t.id)).toEqual([1]);
+    expect(queueView(queueProps({ tickets: rows }))).toContain("1 shown");
+    // The Source group: three options, each counted over every source, and a non-default pick lights the badge.
+    const menu = queueView(queueProps({ tickets: rows, filterOpen: true, filterCat: "source" }));
+    expect(menu).toContain('data-fm-cat="source"');
+    for (const v of ["trov", "all", "github"]) expect(menu).toContain(`data-act="queueSource" data-arg="${v}"`);
+    expect(menu).toMatch(/data-act="queueSource" data-arg="all"[\s\S]*?With GitHub issues/);
   });
 
   it("the detail shows a SOURCE row, names an unmapped author, and locks the source link", () => {
@@ -1609,7 +1627,7 @@ describe("the queue's people open their person card (hitArea rows and cards)", (
   });
 
   it("the GitHub mirror's requester and an unknown handle stay plain text", () => {
-    const html = queueView(queueProps({ view: "table", seg: "all", tickets: [
+    const html = queueView(queueProps({ view: "table", seg: "all", source: "all", tickets: [
       ticket({ id: 5, title: "Mirrored", requester: "github-webhook", source: "github", source_ref: "o/r#5" }),
       ticket({ id: 6, title: "Stranger", requester: "ghost", assignees: ["ghost"] }),
     ] }));

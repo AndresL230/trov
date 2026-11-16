@@ -10,7 +10,7 @@ import type { QueryResult, QueryPrimary, QueryPointer, SprintView, SprintDetail,
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
 import type { SidebarBadges } from "@shared/badges";
-import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
+import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, type StatusMenuAnchor, type QueueFilterCat, type QueueSource } from "./tickets";
 import { agentMark, aiMark, authorityMark, importanceMark, markShape, stateMark, tagWords } from "./marks";
 import { sprintCard, newSprintPanel, sprintScreen, sprintSkeleton, nextSprintId, rmRising } from "./sprints";
 import { sprintDueState, sprintDatesLabel, parsePlanNarrative } from "@shared/sprints-core";
@@ -440,6 +440,9 @@ export interface AppState {
   qSprint: string;
   /** One assignee's tickets (a handle, "" = none) — client-side, over an `anyone` fetch. */
   qPerson: string;
+  /** The Source filter: "trov" (the default) hides tickets mirrored from GitHub issues. Kept per
+   *  browser (`trov.queueSource`), like the Open / Closed / All switch (`trov.queueSeg`). */
+  qSource: QueueSource;
   qFilterOpen: boolean;
   qFilterCat: QueueFilterCat;
   // New-ticket form fields (the design's f* state).
@@ -715,7 +718,7 @@ export function initialState(): AppState {
     ticketBadge: 0,
     badges: {},
     qSeg: "all", qLeaving: [], qAssignee: "anyone", qCategory: "all", qView: "board",
-    qQ: "", qPrio: "all", qSprint: "all", qPerson: "", qFilterOpen: false, qFilterCat: "assignee",
+    qQ: "", qPrio: "all", qSprint: "all", qPerson: "", qSource: "trov", qFilterOpen: false, qFilterCat: "assignee",
     fTitle: "", fCat: null, fPrio: "normal", fDesc: "", fAsgs: [], fLink: "", fSpr: null,
     commentDraft: "", mention: null, commentHeight: null, linkDraft: "",
     lkOpen: false, tdEdit: null, tdDeleteArm: false, tdDeleteBusy: false, asgMenu: false, sprMenu: false, relMenu: false, lkMenu: null, stMenu: null,
@@ -3049,6 +3052,7 @@ function ticketsScreen(s: AppState): string {
     priority: s.qPrio,
     sprint: s.qSprint,
     person: s.qPerson,
+    source: s.qSource,
     filterOpen: s.qFilterOpen,
     filterCat: s.qFilterCat,
     fmOpening: s.fmOpening,
