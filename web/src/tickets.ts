@@ -171,6 +171,9 @@ export interface QueueProps {
   priority?: "all" | TicketPriority;
   /** "all", "backlog", or a sprint id as a string. */
   sprint?: string;
+  /** Which tickets by where they came from (`QueueSource`); omitted = "trov", the default that leaves
+   *  tickets mirrored from GitHub issues out. */
+  source?: QueueSource;
   /** One person's tickets (a handle; "" = nobody picked). The server's assignee
    *  filter knows only anyone / me / unassigned, so this narrows client-side over
    *  an `anyone` fetch. */
@@ -196,10 +199,28 @@ export interface QueueProps {
 /** A card on its way out of the queue: the row as it was last shown, and the exit's elapsed ms. */
 export interface QueueLeaving { row: TicketListItem; t: number }
 
-/** The loaded rows the picked segment shows — "All" leaves declined out (`SEG_STATUSES`). */
-export function segRows(p: Pick<QueueProps, "tickets" | "seg">): TicketListItem[] {
+/** The queue's Source filter. By default the queue leaves out tickets MIRRORED from GitHub issues
+ *  (`source = 'github'`, tickets.md › The default view hides GitHub issues) — the Filter menu's Source
+ *  group brings them back beside Trov's own, or shows them alone. Client-side only: the server's
+ *  list still returns both, so MCP `list_tickets`, the attach dialog and sprint progress are unchanged. */
+export const QUEUE_SOURCES = ["trov", "all", "github"] as const;
+export type QueueSource = (typeof QUEUE_SOURCES)[number];
+const SOURCE_OPTIONS: [QueueSource, string][] = [
+  ["trov", "Trov tickets"],
+  ["all", "With GitHub issues"],
+  ["github", "GitHub issues only"],
+];
+function inSource(t: TicketListItem, source: QueueSource): boolean {
+  if (source === "all") return true;
+  return source === "github" ? t.source === "github" : t.source !== "github";
+}
+
+/** The loaded rows the picked segment shows — "All" leaves declined out (`SEG_STATUSES`) — from the
+ *  picked source (GitHub issues hidden unless asked for). */
+export function segRows(p: Pick<QueueProps, "tickets" | "seg" | "source">): TicketListItem[] {
   const statuses = SEG_STATUSES[p.seg];
-  return p.tickets.filter((t) => statuses.includes(t.status));
+  const source = p.source ?? "trov";
+  return p.tickets.filter((t) => statuses.includes(t.status) && inSource(t, source));
 }
 
 /** The rows a refetch DECLINED out of the view on screen: shown before (their old status is one
@@ -215,7 +236,7 @@ export function declinedLeavers(prev: TicketListItem[], next: TicketListItem[], 
   });
 }
 
-export const QUEUE_FILTER_CATS = ["assignee", "category", "priority", "sprint"] as const;
+export const QUEUE_FILTER_CATS = ["assignee", "category", "priority", "sprint", "source"] as const;
 export type QueueFilterCat = (typeof QUEUE_FILTER_CATS)[number];
 
 const ASSIGNEE_OPTIONS: [TicketAssigneeFilter, string][] = [
@@ -260,7 +281,8 @@ function queueFilterMenu(p: QueueProps, shown: number): FilterMenuProps {
   const prio = p.priority ?? "all";
   const sprint = p.sprint ?? "all";
   const person = p.person ?? "";
-  const active = (p.assignee !== "anyone" || person ? 1 : 0) + (p.category !== "all" ? 1 : 0) + (prio !== "all" ? 1 : 0) + (sprint !== "all" ? 1 : 0);
+  const source = p.source ?? "trov";
+  const active = (p.assignee !== "anyone" || person ? 1 : 0) + (p.category !== "all" ? 1 : 0) + (prio !== "all" ? 1 : 0) + (sprint !== "all" ? 1 : 0) + (source !== "trov" ? 1 : 0);
   const sprintOpts: [string, string][] = [["all", "Any sprint"], ...p.sprints.map((sp): [string, string] => [String(sp.id), sp.label]), ["backlog", "Backlog"]];
   return {
     id: "queue", open: !!p.filterOpen, opening: p.fmOpening === "queue", cat: p.filterCat ?? "assignee", activeCount: active,
@@ -293,6 +315,11 @@ function queueFilterMenu(p: QueueProps, shown: number): FilterMenuProps {
       {
         key: "sprint", label: "Sprint", value: sprint, none: "all",
         options: sprintOpts.map(([v, l]) => ({ v, l, act: "queueSprint", arg: v, n: inSeg.filter((t) => inSprint(t, v)).length })),
+      },
+      {
+        // Counted over the segment from EVERY source, so the hidden GitHub issues are counted too.
+        key: "source", label: "Source", value: source, none: "trov",
+        options: SOURCE_OPTIONS.map(([v, l]) => ({ v, l, act: "queueSource", arg: v, n: segRows({ ...p, source: v }).length })),
       },
     ],
   };

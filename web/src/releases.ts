@@ -125,7 +125,9 @@ export const RELEASES: Release[] = [
       "A duplicate Pro subscription is cancelled automatically but not refunded: refund it by hand in Stripe — Platform's `billing.duplicate` audit row names both subscriptions.",
     ],
     patches: {
-      added: [],
+      added: [
+        "Tickets: GitHub issues are off the board until the Filter's Source shows them, and the Open / Closed / All pick is remembered (#226)",
+      ],
       changed: [
         "A sprint finished long ago no longer shows as finished this week, and agents read a prompt's published version (#225)",
         "An agent can leave as many handoffs in one session as you ask for; only a retry of the same one is folded into it (#225)",
@@ -148,7 +150,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [225],
+    prs: [225, 226],
   },
   // The Sample workspace every new person gets at sign-up: one PR.
   {
