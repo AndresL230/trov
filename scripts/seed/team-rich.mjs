@@ -626,6 +626,8 @@ export function plumbingDeleteStatements() {
     `DELETE FROM library_prefs WHERE org_id = ${O}`,
     `DELETE FROM doc_links WHERE org_id = ${O} AND from_slug IN ${inList(DOC_SLUGS)}`,
     `DELETE FROM doc_imports WHERE org_id = ${O} AND file_name = '${DEV}-handbook.zip'`,
+    // Sandboxes (0089_sandboxes): the two rows below.
+    `DELETE FROM org_sandboxes WHERE org_id = ${O} AND sandbox_id LIKE '${DEV}-%'`,
   ];
 }
 function plumbingStatements(c) {
@@ -660,6 +662,10 @@ function plumbingStatements(c) {
   // Mei's own Library view (0084_library_prefs): Product first in her sidebar and pinned; everyone else has the default.
   s.push(insert("library_prefs", { org_id: O, handle: MEI, sidebar: JSON.stringify(["product", "engineering"]), pinned: JSON.stringify(["product"]), hidden: "[]", updated_at: c.days(3) }));
   s.push(insert("doc_imports", { org_id: O, space_slug: "engineering", parent_slug: null, file_name: `${DEV}-handbook.zip`, started_by: JOSE, started_at: c.days(6), updated_at: c.days(5.99), ended_at: c.days(5.99), status: "done", counts: { pages: 4, images: 1, skipped: 0 }, failures: [], total: 5 }));
+  // Sandboxes (0089_sandboxes): one Jose made and still has, one Andres made and deleted. Rows only — a local Trov has no
+  // SANDBOX binding, so no sandbox tool is listed and nothing reaches Daytona (docs/architecture/sandboxes.md).
+  s.push(insert("org_sandboxes", { org_id: O, sandbox_id: `${DEV}-sb-gradebook`, created_by: JOSE, created_at: c.days(1.5), deleted_at: null, deleted_by: null }));
+  s.push(insert("org_sandboxes", { org_id: O, sandbox_id: `${DEV}-sb-vite`, created_by: ME, created_at: c.days(4), deleted_at: c.days(3.8), deleted_by: ME }));
   // Sync GitHub runs, and what the AI pass still has to look at.
   s.push(insert("sync_runs", { org_id: O, repo: REPO, started_by: ME, started_at: c.days(9), updated_at: c.days(8.99), ended_at: c.days(8.99), status: "ok", batch: 4, batches: 4, phase: "done", done: 412, total: 412, counts: { prs: 58, issues: 31, runs: 240, deploys: 83 }, failures: [], previous_at: c.days(30) }));
   s.push(insert("sync_runs", { org_id: O, repo: REPO, started_by: JACK, started_at: c.days(2), updated_at: c.days(1.99), ended_at: c.days(1.99), status: "partial", batch: 3, batches: 3, phase: "done", done: 120, total: 131, counts: { prs: 14, issues: 6, runs: 100 }, failures: [{ code: "reconcile:deployments", via: "token" }], previous_at: c.days(9) }));
