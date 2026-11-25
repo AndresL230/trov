@@ -4,7 +4,7 @@
     "lib": ["ES2022"],
     "types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers"]
   },
-  "include": ["src", "shared", "test", "vitest.config.ts"],
+  "include": ["src", "shared", "test", "workers", "vitest.config.ts"],
   // Tests that import web/src code (render + triage-map mapping tests) are type-checked
   // under tsconfig.web.json (DOM lib) — never with worker fetch types. Vitest still runs
   // them in the pool-workers harness at runtime (file discovery ignores tsconfig).

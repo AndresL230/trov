@@ -39,9 +39,9 @@ database_id = "6c71838c-18f7-4f68-8513-b58e86c237b9"
 binding = "ARTIFACTS_BUCKET"
 bucket_name = "trov-artifacts"
 
-# Service Binding: the trov-sandbox Worker (Daytona sandboxes for the `sandbox_*` MCP tools — docs/architecture/sandboxes.md).
-# COMMENTED OUT until trov-sandbox is deployed: a binding to a Worker that does not exist fails this deploy. Absent,
-# no sandbox tool is listed anywhere.
+# Service Binding: the trov-sandbox Worker (workers/sandbox — Daytona sandboxes for the `sandbox_*` MCP tools,
+# docs/architecture/sandboxes.md). COMMENTED OUT until trov-sandbox is deployed (`npm run deploy:sandbox`): a binding to a
+# Worker that does not exist fails this deploy. Absent, no sandbox tool is listed anywhere.
 # [[services]]
 # binding = "SANDBOX"
 # service = "trov-sandbox"

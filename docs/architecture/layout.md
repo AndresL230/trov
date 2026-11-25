@@ -288,7 +288,8 @@
   the reads), `src/projects/routes.ts` (the cookie routes at `/projects`), `src/ai/ask/project.ts` (Ask in a project),
   `src/deletion/projects.ts`, `scripts/seed/projects.mjs` (the team scenario's projects) — `projects.md`.
 - Sandboxes: `src/tools/sandboxes.ts` (the switch `sandboxesEnabled`, ownership, the rows and their reconcile, the
-  call to the trov-sandbox Worker), `registerSandboxTools` in `src/mcp.ts` — `sandboxes.md`.
+  call to the trov-sandbox Worker), `registerSandboxTools` in `src/mcp.ts`; the runner itself is the second Worker in
+  this repo, `workers/sandbox/` (its own `wrangler.toml`, `npm run deploy:sandbox`) — `sandboxes.md`.
 - The Sample workspace: `src/orgs/sample.ts` (`createSampleOrg`, the one-per-person guard, the seed's statements,
   `reachesOutside` — the outbound routes a sample refuses), `src/orgs/sample-content.ts` (its made-up content, pure
   data) — `organizations.md` › 1e.

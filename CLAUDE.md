@@ -54,6 +54,8 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
   rollback is GENERATED (`scripts/mt/build-rollback.py`, CI fails if stale).
 - `web/` — TypeScript/Vite SPA, no framework: `main.ts` (state + acts), `render.ts`, one module per screen,
   `hash.ts` (routes), `trov.css`. `web/src/releases.ts` is Help › What's new (see Conventions).
+- `workers/sandbox/` — trov-sandbox, a SECOND Worker (own `wrangler.toml`, `npm run deploy:sandbox`, not deployed by a
+  merge): the Daytona runner behind the `SANDBOX` binding (`sandboxes.md`). `src/` never imports it.
 - `plugins/trov/` — the Claude Code plugin + skills; `.claude-plugin/marketplace.json` distributes it.
 - `docs/architecture/` — per-area reference. `docs/superpowers/specs|plans/` — design history (dated; the
   code wins if they disagree).

@@ -2,14 +2,16 @@
 
 An organization's agents can create and drive **sandboxes** over MCP: cloud Linux VMs (Daytona) to clone a repo
 into, install, run tests, start a dev server and open it in a browser. Trov does the deciding (who is calling,
-which org, whether the org has sandboxes on, whether a sandbox is the org's); a separate Worker, **trov-sandbox**,
-does the running. It holds the Daytona API key, so no MCP path in Trov reads a secret (canopy-multitenancy.md D14,
+which org, whether the org has sandboxes on, whether a sandbox is the org's); a second Worker in this repo,
+**trov-sandbox** (`workers/sandbox/`), does the running. It holds the Daytona API key, so no MCP path in Trov reads a secret (canopy-multitenancy.md D14,
 `test/secrets.mcp.test.ts` unchanged).
 
 Code: `src/tools/sandboxes.ts` (the switch, ownership, the rows, the runner call), the `sandbox_*` tools in
 `src/mcp.ts` (`registerSandboxTools`), the `sandboxes` limit in `shared/plans.ts` and `src/plans/gate.ts`
-(`limitCap`). Migration: `0089_sandboxes.sql`. Test: `test/sandboxes.test.ts`. The runner is its own repository
-(`trov-sandbox`), with its own tests against a fake Daytona.
+(`limitCap`). Migration: `0089_sandboxes.sql`. The runner: `workers/sandbox/` (`src/index.ts` the endpoint,
+`src/ops.ts` each op and the org label, `src/daytona.ts` the REST client, its own `wrangler.toml`). Tests:
+`test/sandboxes.test.ts` (Trov's half), `test/sandbox-runner.test.ts` (the runner against a fake Daytona) — both in
+`npm test`, both typechecked by `tsconfig.worker.json`.
 
 ## The switch: the `sandboxes` limit
 
@@ -76,9 +78,12 @@ sandbox is compute on Trov's bill, and an agent that started one must be able to
 themselves are not called — they auto-stop after their idle minutes (60 by default) and are deleted by Daytona a
 week after stopping.
 
-## The runner (trov-sandbox)
+## The runner (trov-sandbox, `workers/sandbox/`)
 
-A Worker with no public URL (`workers_dev = false`, no routes): the only way in is Trov's Service Binding. One
+A second Worker in this repo with its own `wrangler.toml` and no dependencies of its own (it uses the root
+`node_modules`; nothing in `src/` imports it, nor it `src/`). A merge to `main` deploys **only Trov**: the runner is
+deployed with `npm run deploy:sandbox` (or by a second Workers Builds project on this repo whose deploy command is
+that script, watching `workers/sandbox/**`). It has no public URL (`workers_dev = false`, no routes): the only way in is Trov's Service Binding. One
 endpoint, `POST /op` `{ org, actor, op, args }` → `200 { ok: true, result }` or `{ ok: false, code, error }` with
 `not_found` 404, `bad_request` 400, `conflict` 409 (e.g. the sandbox is stopped), `upstream` 502. It calls
 Daytona's REST API with `fetch` (no SDK) and its own secret `DAYTONA_API_KEY`. Defaults it sets on create:
@@ -88,7 +93,8 @@ private, auto-stop 60 minutes, auto-delete 7 days after stopping.
 
 ## Owner checklist
 
-1. Deploy trov-sandbox first and set its `DAYTONA_API_KEY` secret.
+1. Deploy trov-sandbox first — `npm run deploy:sandbox` — and set its secret:
+   `npx wrangler secret put DAYTONA_API_KEY -c workers/sandbox/wrangler.toml`.
 2. Uncomment the `[[services]]` block in Trov's `wrangler.toml` (binding `SANDBOX`, service `trov-sandbox`) — a
    binding to a Worker that does not exist fails the deploy.
 3. Merge (applies `0089_sandboxes`).
