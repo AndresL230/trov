@@ -123,10 +123,13 @@ export const RELEASES: Release[] = [
       "Before merging, check production has no duplicate doc versions — `SELECT org_id, slug, version, COUNT(*) n FROM doc_versions GROUP BY 1, 2, 3 HAVING n > 1` must return nothing — then apply `0088_state_machines` (merging applies it).",
       "Publish the Trov plugin 0.12.1: the handoff and trov skills drop the one-handoff-per-session rule.",
       "A duplicate Pro subscription is cancelled automatically but not refunded: refund it by hand in Stripe — Platform's `billing.duplicate` audit row names both subscriptions.",
+      "Sandboxes (#227): deploy the trov-sandbox Worker and set its `DAYTONA_API_KEY` secret, then uncomment the `SANDBOX` service binding in wrangler.toml — a binding to a missing Worker fails the deploy.",
+      "Apply `0089_sandboxes` (merging applies it). Sandboxes stay off for every organization until a superadmin sets its Sandboxes limit in Platform.",
     ],
     patches: {
       added: [
         "Tickets: GitHub issues are off the board until the Filter's Source shows them, and the Open / Closed / All pick is remembered (#226)",
+        "Agents in an organization with sandboxes turned on can run code in cloud sandboxes and open what they serve in a browser (#227)",
       ],
       changed: [
         "A sprint finished long ago no longer shows as finished this week, and agents read a prompt's published version (#225)",
@@ -150,7 +153,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [225, 226],
+    prs: [225, 226, 227],
   },
   // The Sample workspace every new person gets at sign-up: one PR.
   {
