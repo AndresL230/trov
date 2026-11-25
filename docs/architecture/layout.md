@@ -282,10 +282,13 @@
   (an Ask turn's lease), `ai_dirty.held_at` (a scope held for a Message Batch), `sprints.source_key` + its partial
   unique index — `ask.md`, `ai.md`; `notification_outbox.attempted_at` (the digest retry's lease — `notifications.md`),
   `org_github_installations.suspension_at` / `.repos_changed_at` — `github-app.md`].
+  Then `0089_sandboxes` [`org_sandboxes`: which Daytona sandboxes are each org's, who made and deleted them — `sandboxes.md`].
 - Projects: `shared/projects-core.ts` (zod-free: the vocabulary, limits, DTOs, `PROJECT_ROUTES`, `projectSlug`),
   `shared/projects.ts` (zod), `src/data/projects.ts` (the rows), `src/tools/projects.ts` (the access rule, the writers,
   the reads), `src/projects/routes.ts` (the cookie routes at `/projects`), `src/ai/ask/project.ts` (Ask in a project),
   `src/deletion/projects.ts`, `scripts/seed/projects.mjs` (the team scenario's projects) — `projects.md`.
+- Sandboxes: `src/tools/sandboxes.ts` (the switch `sandboxesEnabled`, ownership, the rows and their reconcile, the
+  call to the trov-sandbox Worker), `registerSandboxTools` in `src/mcp.ts` — `sandboxes.md`.
 - The Sample workspace: `src/orgs/sample.ts` (`createSampleOrg`, the one-per-person guard, the seed's statements,
   `reachesOutside` — the outbound routes a sample refuses), `src/orgs/sample-content.ts` (its made-up content, pure
   data) — `organizations.md` › 1e.

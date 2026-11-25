@@ -179,6 +179,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | plans, limits, grants, the pricing page, the summarizer allowance | `plans.md` |
 | `src/ai/`, where a model may be called, the router and the AI pass, the kinds and their evals, `ai_runs`, the AI switch, suggestions / "Wrong?", AI cost, `LOCAL_AI_PREVIEW` | `ai.md` |
 | Ask Trov: `src/ai/ask/`, the `/ask` routes and SSE contract, `chat_*` tables, `ai_chat`; the Ask screen (`web/src/ask-*.ts`) | `ask.md` |
+| Sandboxes: `src/tools/sandboxes.ts`, the `sandbox_*` MCP tools, `org_sandboxes`, the `SANDBOX` binding (the trov-sandbox Worker) | `sandboxes.md` |
 | Projects: `src/projects/`, `src/tools/projects.ts`, `project*` tables, Ask in a project (`src/ai/ask/project.ts`), `shared/projects*.ts` | `projects.md` |
 | Stripe, checkout, `src/billing/` | `billing.md` |
 | rate limits, the mail sender, what a stranger can do | `abuse-limits.md` |

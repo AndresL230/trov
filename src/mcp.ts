@@ -55,6 +55,10 @@ import { mcpErrorHint } from "@shared/error-hints";
 import {
   requestLink, joinLink, sendLinkNote, closeLink, listLiveLinks, readInbox, formatInbox, inboxHookOutput, LinkError,
 } from "./tools/links";
+import {
+  SandboxError, sandboxesEnabled, listSandboxes, createSandbox, getSandbox, startSandbox, stopSandbox, deleteSandbox, configureSandbox,
+  execInSandbox, runBackground, sandboxLogs, listSandboxFiles, readSandboxFile, writeSandboxFile, sandboxPreviewUrl,
+} from "./tools/sandboxes";
 import { ASK_THREAD_SESSION_PREFIX, LINK_NOTE_MAX, LINK_REASON_MAX, linkTopicLabel, type LinkSideView, type LinkView } from "@shared/links";
 
 const asText = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }] });
@@ -88,7 +92,7 @@ async function runTool<T>(fn: () => Promise<T>, render: (value: T) => { content:
     // { error: "not_found", code: "not_found" } — the check is never an existence oracle.
     // A plan refusal (0044_plans, e.g. the org's artifact storage is full) reads `code: "plan_limit"`: no retry helps.
     // A LinkError travels the same way; its hourly-note `limit` also says when to try again (`retry_after`).
-    const code = err instanceof TicketError || err instanceof PersonError || err instanceof SprintError || err instanceof ArtifactError || err instanceof HandoffError || err instanceof PromptError || err instanceof PlanLimitError || err instanceof PlanFeatureError || err instanceof LinkError ? err.code : undefined;
+    const code = err instanceof TicketError || err instanceof PersonError || err instanceof SprintError || err instanceof ArtifactError || err instanceof HandoffError || err instanceof PromptError || err instanceof PlanLimitError || err instanceof PlanFeatureError || err instanceof LinkError || err instanceof SandboxError ? err.code : undefined;
     const retry = err instanceof LinkError && err.retryAfter !== undefined ? { retry_after: err.retryAfter } : {};
     return toolError(code ? { error: message, code, ...retry } : { error: message });
   }
@@ -100,7 +104,7 @@ async function runTool<T>(fn: () => Promise<T>, render: (value: T) => { content:
  * already resolved to (`buildConnectionMcpServer`, below), so a tool body can only ever read and write
  * that org — exactly as when a connection had one org for good.
  */
-function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts: { origin?: string; orgSlug?: string | null } = {}): void {
+function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts: OrgToolOpts = {}): void {
   const principal: Principal = { handle: ctx.userId };
   // Absolute links in artifact results: PUBLIC_ORIGIN, else the /mcp request's origin.
   // COOKIE_SECRET is only the ROOT of the download-URL key (derived with a purpose label).
@@ -823,6 +827,134 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
       async (input) => runTool(() => write_plan(ctx, input as PlanWrite, principal.handle))
     );
   }
+
+  if (opts.sandboxes) registerSandboxTools(server, env, ctx);
+}
+
+interface OrgToolOpts { origin?: string; orgSlug?: string | null; sandboxes?: boolean }
+
+// ── Sandboxes (docs/architecture/sandboxes.md) ─────────────────────────────────
+// Listed only when the SANDBOX binding exists AND an organization this connection can reach has sandboxes on
+// (`handleMcp` works that out); a call that lands in an org without them is refused `not_enabled`, having run
+// nothing. Every body is a thin call into src/tools/sandboxes.ts, which never reads a secret: the Daytona key is
+// the trov-sandbox Worker's.
+
+/** The sandbox tools that only read. */
+export const SANDBOX_READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
+  "sandbox_list", "sandbox_get", "sandbox_logs", "sandbox_list_files", "sandbox_read_file",
+]);
+
+const SANDBOX_ARG = z.string().describe("The sandbox's id, from sandbox_list or sandbox_create.");
+
+function registerSandboxTools(server: McpServer, env: Env, ctx: TenantContext): void {
+  server.tool(
+    "sandbox_list",
+    "Read-only: this organization's sandboxes — cloud Linux VMs (Daytona) agents can run code in — with each one's id, state (started / stopped / …), size, whether its preview URLs are public, its auto-stop minutes and who created it, plus the org's `limit` on how many it may have at once. Sandboxes are shared by everyone in the organization.",
+    {},
+    async () => runTool(() => listSandboxes(env, ctx)),
+  );
+
+  server.tool(
+    "sandbox_create",
+    "Create a sandbox for this organization and wait (up to ~90 s) for it to start: a Debian VM with Python and Node unless `snapshot` names another image. Private, auto-stops after 60 idle minutes, deleted a week after it stops. Refused with `plan_limit` when the organization already has as many as it may. A typical dev loop: sandbox_create → sandbox_exec (git clone, install) → sandbox_run_background (start the dev server bound to 0.0.0.0) → sandbox_preview_url → sandbox_logs. Sandboxes run on Trov's account: stop or delete them when done.",
+    {
+      snapshot: z.string().optional().describe("A Daytona snapshot to boot from; omit for the default image."),
+      env: z.record(z.string(), z.string()).optional().describe("Environment variables for the sandbox."),
+      public: z.boolean().optional().describe("Make its preview URLs work without a token. Default false."),
+      cpu: z.number().int().positive().max(8).optional(),
+      memory_gib: z.number().int().positive().max(16).optional(),
+      disk_gib: z.number().int().positive().max(50).optional(),
+      auto_stop_minutes: z.number().int().min(0).max(1440).optional().describe("Idle minutes before it stops; 0 never. Default 60. Viewing a preview URL is not activity."),
+    },
+    async (args) => runTool(() => createSandbox(env, ctx, args)),
+  );
+
+  server.tool("sandbox_get", "Read-only: one sandbox's current state and settings.", { sandbox: SANDBOX_ARG },
+    async (args) => runTool(() => getSandbox(env, ctx, args)));
+
+  server.tool("sandbox_start", "Start a stopped sandbox and wait for it. Its disk is as it was; processes are not.", { sandbox: SANDBOX_ARG },
+    async (args) => runTool(() => startSandbox(env, ctx, args)));
+
+  server.tool("sandbox_stop", "Stop a sandbox: processes end, the disk is kept, and it stops costing compute.", { sandbox: SANDBOX_ARG },
+    async (args) => runTool(() => stopSandbox(env, ctx, args)));
+
+  server.tool(
+    "sandbox_delete",
+    "Delete a sandbox and its disk for good. It is compute, not a Trov record: nothing in Trov's history is removed, and it frees one of the organization's sandbox slots.",
+    { sandbox: SANDBOX_ARG },
+    async (args) => runTool(() => deleteSandbox(env, ctx, args)),
+  );
+
+  server.tool(
+    "sandbox_configure",
+    "Change a sandbox's idle minutes before auto-stop (0 = never: then stop it yourself) and/or whether its preview URLs are public.",
+    {
+      sandbox: SANDBOX_ARG,
+      auto_stop_minutes: z.number().int().min(0).max(1440).optional(),
+      public: z.boolean().optional(),
+    },
+    async (args) => runTool(() => configureSandbox(env, ctx, args)),
+  );
+
+  server.tool(
+    "sandbox_exec",
+    "Run a shell command in a sandbox and wait for it (default 120 s, at most 600). Returns { exit_code, output } — output is stdout and stderr together, its last 60,000 characters. Pipes, && and cd need `bash -lc '…'`. For a dev server, watcher or anything that keeps running, use sandbox_run_background.",
+    {
+      sandbox: SANDBOX_ARG,
+      command: z.string().min(1),
+      cwd: z.string().optional().describe("Working directory; default the sandbox user's home."),
+      env: z.record(z.string(), z.string()).optional(),
+      timeout_seconds: z.number().int().min(1).max(600).optional(),
+    },
+    async (args) => runTool(() => execInSandbox(env, ctx, args)),
+  );
+
+  server.tool(
+    "sandbox_run_background",
+    "Start a long-running command (a dev server, a watcher, a build) in a named shell session and return at once with its `command_id`; read its output with sandbox_logs. A session keeps its shell state (cd, exports) between commands. Bind servers to 0.0.0.0 (e.g. `npm run dev -- --host 0.0.0.0`) or the preview URL will not reach them.",
+    {
+      sandbox: SANDBOX_ARG,
+      command: z.string().min(1),
+      session: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional().describe("Session name; default \"main\"."),
+    },
+    async (args) => runTool(() => runBackground(env, ctx, args)),
+  );
+
+  server.tool(
+    "sandbox_logs",
+    "Read-only: output so far from a sandbox_run_background command (its last `tail_chars`, default 8,000), whether it is still running, and its exit code once it has ended.",
+    {
+      sandbox: SANDBOX_ARG,
+      command_id: z.string().min(1),
+      session: z.string().optional().describe("Default \"main\"."),
+      tail_chars: z.number().int().min(200).max(60000).optional(),
+    },
+    async (args) => runTool(() => sandboxLogs(env, ctx, args)),
+  );
+
+  server.tool("sandbox_list_files", "Read-only: a directory in a sandbox — each entry's name, whether it is a directory, size and modified time.",
+    { sandbox: SANDBOX_ARG, path: z.string().min(1) },
+    async (args) => runTool(() => listSandboxFiles(env, ctx, args)));
+
+  server.tool("sandbox_read_file", "Read-only: a text file in a sandbox (its first 60,000 characters; `truncated` says when there was more). A binary file returns only its size.",
+    { sandbox: SANDBOX_ARG, path: z.string().min(1) },
+    async (args) => runTool(() => readSandboxFile(env, ctx, args)));
+
+  server.tool("sandbox_write_file", "Create or overwrite a text file in a sandbox; its parent directories are made.",
+    { sandbox: SANDBOX_ARG, path: z.string().min(1), content: z.string().max(5_000_000) },
+    async (args) => runTool(() => writeSandboxFile(env, ctx, args)));
+
+  server.tool(
+    "sandbox_preview_url",
+    "A browser link to a port a sandbox is serving on. A private sandbox gets a signed URL that works on its own for `expires_seconds` (default 1 hour, at most a day); `signed: false` returns the plain URL and the token to send as the X-Daytona-Preview-Token header instead. A public sandbox's plain URL needs neither.",
+    {
+      sandbox: SANDBOX_ARG,
+      port: z.number().int().min(1).max(65535),
+      signed: z.boolean().optional(),
+      expires_seconds: z.number().int().min(60).max(86400).optional(),
+    },
+    async (args) => runTool(() => sandboxPreviewUrl(env, ctx, args)),
+  );
 }
 
 // ── The connection: which organization each call acts in (0051) ──────────────
@@ -841,7 +973,7 @@ type ToolHandler = (args: Record<string, unknown>, extra: unknown) => Promise<To
 interface ToolDef { description: string; shape: Record<string, z.ZodTypeAny>; handler: ToolHandler }
 
 /** The org tools for one context, as a map — `registerOrgTools` run against a recorder. */
-function orgTools(env: Env, ctx: TenantContext, opts: { origin?: string; orgSlug?: string | null }): Map<string, ToolDef> {
+function orgTools(env: Env, ctx: TenantContext, opts: OrgToolOpts): Map<string, ToolDef> {
   const tools = new Map<string, ToolDef>();
   const recorder = {
     tool: (name: string, description: string, shape: Record<string, z.ZodTypeAny>, handler: ToolHandler) => { tools.set(name, { description, shape, handler }); },
@@ -879,6 +1011,8 @@ export interface McpServerOpts {
   origin?: string;
   /** Where a tool call's usage is counted — the org it resolved to. Absent (a test): nothing is metered. */
   exec?: Pick<ExecutionContext, "waitUntil">;
+  /** List the sandbox tools (src/tools/sandboxes.ts): an organization the connection can reach has them on. */
+  sandboxes?: boolean;
 }
 
 /**
@@ -899,13 +1033,13 @@ export function mcpInstructions(origin: string = SITE_ORIGIN): string {
 export function buildConnectionMcpServer(env: Env, conn: BearerConnection, opts: McpServerOpts = {}): McpServer {
   const origin = opts.origin ?? SITE_ORIGIN;
   const server = new McpServer({ name: "trov", version: "1.0.0", websiteUrl: origin }, { instructions: mcpInstructions(origin) });
-  const toolsFor = (o: OrgTenant) => orgTools(env, o.ctx, { origin: opts.origin, orgSlug: o.slug || undefined });
+  const toolsFor = (o: OrgTenant) => orgTools(env, o.ctx, { origin: opts.origin, orgSlug: o.slug || undefined, sandboxes: opts.sandboxes === true && !!env.SANDBOX });
   const template = conn.orgs.find((o) => hasRole(o.ctx, "admin")) ?? conn.current ?? conn.orgs[0];
 
   for (const [name, def] of toolsFor(template)) {
     const ownRepo = "repo" in def.shape; // upload_asset: `repo` is also the page's own field
     const shape = { ...def.shape, ...(ownRepo ? {} : { repo: REPO_ARG }), org: ORG_ARG };
-    server.tool(name, def.description, shape, { readOnlyHint: READ_ONLY_TOOLS.has(name) }, async (args: Record<string, unknown>, extra: unknown) => {
+    server.tool(name, def.description, shape, { readOnlyHint: READ_ONLY_TOOLS.has(name) || SANDBOX_READ_ONLY_TOOLS.has(name) }, async (args: Record<string, unknown>, extra: unknown) => {
       const target = await resolveCall(conn, args);
       if (!target.ok) return scopeError(target);
       try {
@@ -1004,13 +1138,35 @@ export function buildConnectionMcpServer(env: Env, conn: BearerConnection, opts:
  * else, exactly as a pasted token's. Exported so tests can drive the REAL registered tools (e.g. over
  * an in-memory transport) rather than re-implementing the tool bodies — the same closures production runs.
  */
-export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?: string; orgSlug?: string | null } = {}): McpServer {
-  return buildConnectionMcpServer(env, pinnedConnection(env, ctx, { slug: opts.orgSlug }), { origin: opts.origin });
+export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?: string; orgSlug?: string | null; sandboxes?: boolean } = {}): McpServer {
+  return buildConnectionMcpServer(env, pinnedConnection(env, ctx, { slug: opts.orgSlug }), { origin: opts.origin, sandboxes: opts.sandboxes });
+}
+
+// Whether an org has sandboxes on, remembered for a minute per isolate: the answer only changes when a superadmin
+// edits the org's override, and without it every MCP request (link_inbox hooks included) would pay two reads per org.
+const SANDBOX_CACHE_MS = 60_000;
+const sandboxOn = new Map<string, { on: boolean; at: number }>();
+
+/** Does any organization this connection can reach have sandboxes on? Only asked when the binding exists. */
+async function connectionHasSandboxes(env: Env, conn: BearerConnection): Promise<boolean> {
+  if (!env.SANDBOX) return false;
+  const now = Date.now();
+  for (const o of conn.orgs) {
+    const hit = sandboxOn.get(o.ctx.orgId);
+    let on = hit && now - hit.at < SANDBOX_CACHE_MS ? hit.on : undefined;
+    if (on === undefined) {
+      on = await sandboxesEnabled(env, o.ctx).catch(() => false);
+      sandboxOn.set(o.ctx.orgId, { on, at: now });
+    }
+    if (on) return true;
+  }
+  return false;
 }
 
 export async function handleMcp(request: Request, env: Env, exec: ExecutionContext, conn: BearerConnection): Promise<Response> {
   // Links in a tool result (`<origin>/<slug>/#…`) carry the slug of the org THAT call resolved to.
-  const server = buildConnectionMcpServer(env, conn, { origin: new URL(request.url).origin, exec });
+  const sandboxes = await connectionHasSandboxes(env, conn);
+  const server = buildConnectionMcpServer(env, conn, { origin: new URL(request.url).origin, exec, sandboxes });
   // createMcpHandler wraps @modelcontextprotocol/sdk over Streamable HTTP, stateless (no McpAgent/DO).
   const handler = createMcpHandler(server, { route: "/mcp" });
   return handler(request, env, exec);

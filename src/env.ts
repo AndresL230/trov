@@ -5,6 +5,9 @@ export interface Env {
 
   ASSETS: Fetcher;
   ARTIFACTS_BUCKET: R2Bucket; // binary artifact bytes at `artifacts/<sha256>` (src/tools/artifacts.ts)
+  // SERVICE BINDING (wrangler.toml [[services]]) — the trov-sandbox Worker, which holds the Daytona key and runs every
+  // sandbox op for one org (docs/architecture/sandboxes.md). Absent → no sandbox tool is listed anywhere.
+  SANDBOX?: Fetcher;
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
   GOOGLE_CLIENT_ID?: string;     // Google OAuth client (second session-class provider); absent → /auth/google/login 503s

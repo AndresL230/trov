@@ -17,7 +17,7 @@ export type PlanId = (typeof PLAN_IDS)[number];
 export const isPlanId = (v: unknown): v is PlanId => typeof v === "string" && (PLAN_IDS as readonly string[]).includes(v);
 
 /** Every limit a plan sets. `null` as a value means UNLIMITED. */
-export const LIMIT_KEYS = ["seats", "repositories", "environments", "artifact_bytes", "agent_connections", "ai_summaries", "ai_runs", "jev_checks", "ai_chat", "tags", "projects", "project_pins"] as const;
+export const LIMIT_KEYS = ["seats", "repositories", "environments", "artifact_bytes", "agent_connections", "ai_summaries", "ai_runs", "jev_checks", "ai_chat", "tags", "projects", "project_pins", "sandboxes"] as const;
 export type LimitKey = (typeof LIMIT_KEYS)[number];
 export type Entitlements = Record<LimitKey, number | null>;
 /** Per-org exceptions: a key that is present replaces the plan's value (null = unlimited); absent = the plan's. */
@@ -90,6 +90,12 @@ export const LIMITS: Record<LimitKey, LimitDef> = {
   project_pins: {
     label: "Pinned items", one: "pinned item", many: "pinned items", counts: "Items pinned to one project.", per: "project", unit: "count", min: 0, listed: false,
   },
+  // Sandboxes (0089_sandboxes; docs/architecture/sandboxes.md): Daytona VMs the org's agents run over MCP, on Trov's
+  // Daytona account. 0 on EVERY plan — a superadmin turns them on for one org with a Platform override — so it is
+  // NOT LISTED: no plan sells it. 0 also means the sandbox tools refuse everything, not just a new one.
+  sandboxes: {
+    label: "Sandboxes", one: "sandbox", many: "sandboxes", counts: "Sandboxes the organization has that are not deleted.", per: "org", unit: "count", min: 0, listed: false,
+  },
 };
 
 /** The limits a plan is SHOWN with — the pricing page, the Plan block, Settings' Limits: every key but
@@ -147,23 +153,23 @@ const GB = 1024 * MB;
 export const PLANS: Record<PlanId, PlanDef> = {
   free: {
     id: "free", name: "Free", description: "For a small team trying Trov out.",
-    entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, ai_chat: 50, tags: 30, projects: 2, project_pins: 20 },
+    entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, ai_chat: 50, tags: 30, projects: 2, project_pins: 20, sandboxes: 0 },
     features: [], offered: true, billing: null,
   },
   // LEGACY: no longer offered or sold. An org or grant already on it keeps these limits.
   personal: {
     id: "personal", name: "Personal", description: "One person's own organization.",
-    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, ai_chat: 50, tags: 30, projects: 2, project_pins: 20 },
+    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, ai_chat: 50, tags: 30, projects: 2, project_pins: 20, sandboxes: 0 },
     features: [], offered: false, billing: null,
   },
   team: {
     id: "team", name: "Pro", description: "For a team, paid per seat.",
-    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 300, tags: 50, projects: null, project_pins: 200 },
+    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 300, tags: 50, projects: null, project_pins: 200, sandboxes: 0 },
     features: [], offered: true, billing: null, perSeat: ["ai_chat"],
   },
   enterprise: {
     id: "enterprise", name: "Enterprise", description: "Limits set for the organization by Trov.",
-    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null, ai_runs: null, jev_checks: null, ai_chat: null, tags: null, projects: null, project_pins: null },
+    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null, ai_runs: null, jev_checks: null, ai_chat: null, tags: null, projects: null, project_pins: null, sandboxes: 0 },
     features: [], offered: true, billing: null,
   },
 };

@@ -25,6 +25,7 @@ Apps) are rows it enters in Org settings, envelope-encrypted under `TROV_KEK` (`
 | `DB` | D1, database `trov`. Reached only through a context, inside `src/data/` (`data-layer.md`) | nothing works |
 | `ASSETS` | the static assets binding over `web/dist` (the prerendered public pages, the app shell `app.html`, the scripts and images, and the generated `_redirects` / `_headers`). It serves a file BEFORE the Worker runs, except `/`, which `run_worker_first = ["/"]` sends to the Worker first (the landing or the app shell, `web-ui.md` › The public pages, for crawlers) | no page is served |
 | `ARTIFACTS_BUCKET` | R2, bucket `trov-artifacts`: binary artifact bodies at `artifacts/<sha256>`, doc images, and uploaded avatars and organization images (`avatars/<sha256>`, `org-logos/<sha256>`) — `artifacts.md` | **the bucket must exist before the first deploy that carries the binding** (`wrangler r2 bucket create trov-artifacts`), or the deploy fails |
+| `SANDBOX` | Service Binding to the **trov-sandbox** Worker, which holds the Daytona key and runs every sandbox op for one org — `sandboxes.md` | no `sandbox_*` tool is listed anywhere. **Commented out in `wrangler.toml` until trov-sandbox is deployed**: a binding to a Worker that does not exist fails the deploy |
 
 `ASSETS`' caching (which files a browser may keep, and for how long) is `_headers`: `web-ui.md` › Browser caching.
 
