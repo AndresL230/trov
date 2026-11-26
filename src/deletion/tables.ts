@@ -55,6 +55,9 @@ export const ORG_TABLES = [
   "chat_thread_people", "chat_actions", "chat_artifacts", "chat_messages", "chat_fts", "chat_threads", "person_ask_settings", "ask_flags",
   // Projects (0086_projects): what each project pins, its members, the projects (their threads and artifacts above).
   "project_pins", "project_members", "projects",
+  // Sandboxes (0089_sandboxes): which Daytona sandboxes are the org's. The VMs themselves auto-stop and auto-delete
+  // on Daytona's side (docs/architecture/sandboxes.md › Deleting an organization).
+  "org_sandboxes",
   // Repo › Planning's themes (0064_repo_themes): each PR's theme, the captions, the themes.
   "pr_themes", "repo_theme_captions", "repo_themes",
   // What the AI pass's org rollup wrote about the roadmap: sprint notes and plan drift (0065_org_insights).

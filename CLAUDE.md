@@ -54,6 +54,8 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
   rollback is GENERATED (`scripts/mt/build-rollback.py`, CI fails if stale).
 - `web/` — TypeScript/Vite SPA, no framework: `main.ts` (state + acts), `render.ts`, one module per screen,
   `hash.ts` (routes), `trov.css`. `web/src/releases.ts` is Help › What's new (see Conventions).
+- `workers/sandbox/` — trov-sandbox, a SECOND Worker (own `wrangler.toml`, `npm run deploy:sandbox`, not deployed by a
+  merge): the Daytona runner behind the `SANDBOX` binding (`sandboxes.md`). `src/` never imports it.
 - `plugins/trov/` — the Claude Code plugin + skills; `.claude-plugin/marketplace.json` distributes it.
 - `docs/architecture/` — per-area reference. `docs/superpowers/specs|plans/` — design history (dated; the
   code wins if they disagree).
@@ -179,6 +181,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | plans, limits, grants, the pricing page, the summarizer allowance | `plans.md` |
 | `src/ai/`, where a model may be called, the router and the AI pass, the kinds and their evals, `ai_runs`, the AI switch, suggestions / "Wrong?", AI cost, `LOCAL_AI_PREVIEW` | `ai.md` |
 | Ask Trov: `src/ai/ask/`, the `/ask` routes and SSE contract, `chat_*` tables, `ai_chat`; the Ask screen (`web/src/ask-*.ts`) | `ask.md` |
+| Sandboxes: `src/tools/sandboxes.ts`, the `sandbox_*` MCP tools, `org_sandboxes`, the `SANDBOX` binding (the trov-sandbox Worker) | `sandboxes.md` |
 | Projects: `src/projects/`, `src/tools/projects.ts`, `project*` tables, Ask in a project (`src/ai/ask/project.ts`), `shared/projects*.ts` | `projects.md` |
 | Stripe, checkout, `src/billing/` | `billing.md` |
 | rate limits, the mail sender, what a stranger can do | `abuse-limits.md` |

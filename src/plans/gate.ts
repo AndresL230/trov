@@ -54,6 +54,8 @@ const USE: Record<TenantLimit, (ctx: TenantContext, scope: LimitScope) => Promis
     ? count(ctx, `SELECT COUNT(*) AS n FROM project_pins WHERE org_id = ? AND project_id = ?`, ctx.orgId, scope.project)
     : count(ctx, `SELECT COALESCE(MAX(c), 0) AS n FROM (SELECT COUNT(*) AS c FROM project_pins pp JOIN projects p ON p.id = pp.project_id AND p.org_id = pp.org_id
                    WHERE pp.org_id = ? AND p.deleted_at IS NULL AND p.archived_at IS NULL GROUP BY pp.project_id)`, ctx.orgId),
+  // Sandboxes (0089_sandboxes): the org's sandboxes that are not deleted, by a person or by Daytona.
+  sandboxes: (ctx) => count(ctx, `SELECT COUNT(*) AS n FROM org_sandboxes WHERE org_id = ? AND deleted_at IS NULL`, ctx.orgId),
 };
 
 /** Model calls for suggestions made for the org this calendar month (UTC). */
@@ -162,6 +164,14 @@ export async function requirePlan(ctx: TenantContext, limit: TenantLimit, adding
  * `PlanDef.features`)? Throws `PlanFeatureError` (HTTP 402 `plan_feature` / MCP `plan_feature`) when it
  * does not. Nothing calls it yet: no feature is gated (`FEATURE_KEYS` is empty).
  */
+/** The org's resolved cap for `limit` (null = unlimited). A canceled plan reads as 0 here: it includes nothing new.
+ *  For a limit that is also an on/off switch (`sandboxes`: 0 means the capability is off, not just full). */
+export async function limitCap(ctx: TenantContext, limit: TenantLimit): Promise<number | null> {
+  const state = await planFor(ctx);
+  if (state.status === "canceled") return 0;
+  return resolveEntitlements(state.plan, state.overrides, state.members)[limit];
+}
+
 export async function requireFeature(ctx: TenantContext, feature: FeatureKey): Promise<void> {
   const refusal = planFeatureRefusal(await planFor(ctx), feature);
   if (refusal) throw new PlanFeatureError(refusal);
@@ -169,18 +179,18 @@ export async function requireFeature(ctx: TenantContext, feature: FeatureKey): P
 
 /** `GET /api/o/:slug/plan` — any member: the plan, what it includes, and the org's use of each limit. */
 export async function orgPlanView(ctx: TenantContext): Promise<OrgPlanView> {
-  const [state, ai_summaries, ai_runs, seats, repositories, environments, artifact_bytes, agent_connections, tags, jev_checks, ai_chat, projects, project_pins] = await Promise.all([
+  const [state, ai_summaries, ai_runs, seats, repositories, environments, artifact_bytes, agent_connections, tags, jev_checks, ai_chat, projects, project_pins, sandboxes] = await Promise.all([
     planFor(ctx), limitUse(ctx, "ai_summaries"), limitUse(ctx, "ai_runs"),
     first<{ members: number; pending: number }>(ctx,
       `SELECT (SELECT COUNT(*) FROM memberships WHERE org_id = ?1) AS members,
               (SELECT COUNT(*) FROM org_invites WHERE org_id = ?1 AND status = 'pending') AS pending`, ctx.orgId),
     limitUse(ctx, "repositories"), limitUse(ctx, "environments"), limitUse(ctx, "artifact_bytes"), limitUse(ctx, "agent_connections"), limitUse(ctx, "tags"), limitUse(ctx, "jev_checks"), limitUse(ctx, "ai_chat"),
-    limitUse(ctx, "projects"), limitUse(ctx, "project_pins"),
+    limitUse(ctx, "projects"), limitUse(ctx, "project_pins"), limitUse(ctx, "sandboxes"),
   ]);
   const def = planDef(state.plan);
   const entitlements = resolveEntitlements(state.plan, state.overrides, seats?.members ?? state.members);
   const split = { members: seats?.members ?? 0, pending: seats?.pending ?? 0 };
-  const usage = { seats: split.members + split.pending, repositories, environments, artifact_bytes, agent_connections, ai_summaries, ai_runs, jev_checks, ai_chat, tags, projects, project_pins };
+  const usage = { seats: split.members + split.pending, repositories, environments, artifact_bytes, agent_connections, ai_summaries, ai_runs, jev_checks, ai_chat, tags, projects, project_pins, sandboxes };
   return {
     plan: def.id, name: def.name, description: def.description, status: state.status, source: state.source, period_end: state.period_end,
     gift_until: state.gift_until, entitlements, overridden: LIMIT_KEYS.filter((k) => k in state.overrides), usage, seats: split, over: overLimits(entitlements, usage),

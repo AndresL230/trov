@@ -44,6 +44,8 @@ export const RESET_STATEMENTS = [
   "DELETE FROM project_pins",
   "DELETE FROM project_members",
   "DELETE FROM projects",
+  // Sandboxes (0089_sandboxes): which Daytona sandboxes are each org's.
+  "DELETE FROM org_sandboxes",
   // Ask Trov (0066_ask): cards, attachment links and messages hang off threads (chat_fts follows its messages by trigger).
   "DELETE FROM chat_thread_people", // 0077_ask_people_sharing: who a thread is shared with by name
   "DELETE FROM chat_actions",
