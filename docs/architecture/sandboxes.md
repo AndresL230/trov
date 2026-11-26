@@ -95,7 +95,7 @@ private, auto-stop 60 minutes, auto-delete 7 days after stopping.
 
 1. Deploy trov-sandbox first — `npm run deploy:sandbox` — and set its secret:
    `npx wrangler secret put DAYTONA_API_KEY -c workers/sandbox/wrangler.toml`.
-2. Uncomment the `[[services]]` block in Trov's `wrangler.toml` (binding `SANDBOX`, service `trov-sandbox`) — a
-   binding to a Worker that does not exist fails the deploy.
-3. Merge (applies `0089_sandboxes`).
+2. The `[[services]]` block in Trov's `wrangler.toml` (binding `SANDBOX`, service `trov-sandbox`) is on: a fresh
+   environment must deploy trov-sandbox BEFORE Trov, or Trov's deploy fails on the missing Worker.
+3. `0089_sandboxes` is applied by the deploy.
 4. Platform › the org › limits: set Sandboxes to how many it may have at once.

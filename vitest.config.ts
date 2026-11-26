@@ -31,6 +31,15 @@ export default defineConfig({
         // compare — never touching DB, which the setup file has already migrated. DB is restated so this list
         // cannot drop it.
         d1Databases: { DB: "80386dc4-deef-461d-932a-0670d22ddf83", MT_DB: "multitenancy-migration-test" },
+        // wrangler.toml binds SANDBOX to the trov-sandbox Worker (docs/architecture/sandboxes.md); the pool needs a Worker
+        // by that name or it will not start. This stand-in answers every op `unavailable`: no org has a `sandboxes`
+        // limit in the seed, so nothing reaches it, and the sandbox tests bind their own fake runner per test.
+        workers: [{
+          name: "trov-sandbox",
+          modules: true,
+          script: "export default { fetch() { return Response.json({ ok: false, code: 'unavailable', error: 'test stand-in' }, { status: 503 }); } };",
+          compatibilityDate: "2025-11-01",
+        }],
         bindings: {
           TEST_MIGRATIONS: await readD1Migrations(
             path.join(import.meta.dirname, "migrations")

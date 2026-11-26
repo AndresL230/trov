@@ -78,7 +78,7 @@ afterEach(async () => { await setCap(ORG_A, undefined); await setCap(ORG_B, unde
 
 describe("listing", () => {
   it("no SANDBOX binding: no sandbox tool, whatever the caller asks for", async () => {
-    const m = await connect(await bearerCtx("AndresL230"), e, true);
+    const m = await connect(await bearerCtx("AndresL230"), { ...e, SANDBOX: undefined }, true);
     const names = (await m.client.listTools()).tools.map((t) => t.name);
     expect(names.filter((n) => n.startsWith("sandbox_"))).toEqual([]);
     await m.close();
