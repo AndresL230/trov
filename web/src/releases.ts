@@ -153,7 +153,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [225, 226, 227],
+    prs: [225, 226, 227, 228],
   },
   // The Sample workspace every new person gets at sign-up: one PR.
   {
