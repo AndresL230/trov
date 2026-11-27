@@ -176,3 +176,12 @@ export function jobTenant(env: Env, ctx: TenantContext): TenantContext {
   if (ctx.via === "bearer") throw new JobAccessError();
   return ctx.via === "system" ? ctx : systemTenant(platform(env, "system"), ctx.orgId, "system");
 }
+
+/** Sandboxes created from a profile whose boot has not been started (0090_sandbox_monitor, src/sandboxes/boot.ts):
+ *  ids only, at most 20, of live, non-sample orgs. */
+export function listPendingBoots(p: PlatformContext, orgId?: string): Promise<{ org_id: string; sandbox_id: string }[]> {
+  return all<{ org_id: string; sandbox_id: string }>(p,
+    `SELECT s.org_id, s.sandbox_id FROM org_sandboxes s JOIN orgs o ON o.id = s.org_id
+      WHERE s.boot_state = 'pending' AND s.deleted_at IS NULL AND ${orgLive("o")} AND o.sample = 0 AND (? IS NULL OR s.org_id = ?)
+      ORDER BY s.created_at LIMIT 20`, orgId ?? null, orgId ?? null);
+}

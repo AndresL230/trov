@@ -66,6 +66,9 @@ const PLATFORM_ALLOW: Allow[] = [
   { file: "src/platform/sweeps.ts", fn: "expireDueHandoffs", tables: ["handoffs"], why: "retention sweep, cross-org and write-only (§4.4)" },
   { file: "src/platform/sweeps.ts", fn: "expireDueLinks", tables: ["agent_links"], why: "expiry sweep, cross-org and write-only, like the handoffs' (0078_agent_links)" },
   { file: "src/platform/sweeps.ts", fn: "pruneHandoffUploadTokens", tables: ["handoff_upload_tokens"], why: "retention sweep, cross-org and write-only: handoff upload tokens past their 5 minutes" },
+  // Profile boots (0090_sandbox_monitor, src/sandboxes/boot.ts): which sandboxes wait for their boot — ids only; each is
+  // then claimed and booted as its own org's system tenant.
+  { file: "src/platform/jobs.ts", fn: "listPendingBoots", tables: ["org_sandboxes"], why: "background job units: ids of sandboxes whose boot is pending, no content" },
   { file: "src/platform/sweeps.ts", fn: "pruneSyncRuns", tables: ["sync_runs"], why: "retention sweep, cross-org and write-only: Sync GitHub run records past 90 days" },
   // Bearer credentials are looked up by HASH before any org is known: the row is what names the
   // (person, org), and src/data/bearer.ts then checks that membership live (§7.1). Each lookup is listed

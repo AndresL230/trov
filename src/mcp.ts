@@ -57,7 +57,7 @@ import {
 } from "./tools/links";
 import {
   SandboxError, sandboxesEnabled, listSandboxes, createSandbox, getSandbox, startSandbox, stopSandbox, deleteSandbox, configureSandbox,
-  execInSandbox, runBackground, sandboxLogs, listSandboxFiles, readSandboxFile, writeSandboxFile, sandboxPreviewUrl,
+  execInSandbox, runBackground, sandboxLogs, listSandboxFiles, readSandboxFile, writeSandboxFile, sandboxPreviewUrl, listSandboxProfiles,
 } from "./tools/sandboxes";
 import { ASK_THREAD_SESSION_PREFIX, LINK_NOTE_MAX, LINK_REASON_MAX, linkTopicLabel, type LinkSideView, type LinkView } from "@shared/links";
 
@@ -841,23 +841,26 @@ interface OrgToolOpts { origin?: string; orgSlug?: string | null; sandboxes?: bo
 
 /** The sandbox tools that only read. */
 export const SANDBOX_READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
-  "sandbox_list", "sandbox_get", "sandbox_logs", "sandbox_list_files", "sandbox_read_file",
+  "sandbox_list", "sandbox_get", "sandbox_logs", "sandbox_list_files", "sandbox_read_file", "sandbox_list_profiles",
 ]);
 
-const SANDBOX_ARG = z.string().describe("The sandbox's id, from sandbox_list or sandbox_create.");
+const SANDBOX_ARG = z.string().describe("The sandbox's name or id, from sandbox_list or sandbox_create.");
 
 function registerSandboxTools(server: McpServer, env: Env, ctx: TenantContext): void {
   server.tool(
     "sandbox_list",
-    "Read-only: this organization's sandboxes — cloud Linux VMs (Daytona) agents can run code in — with each one's id, state (started / stopped / …), size, whether its preview URLs are public, its auto-stop minutes and who created it, plus the org's `limit` on how many it may have at once. Sandboxes are shared by everyone in the organization.",
+    "Read-only: this organization's sandboxes — cloud Linux VMs (Daytona) agents can run code in — with each one's name, id, state (started / stopped / …), the profile it booted from and how its boot stands, size, whether its preview URLs are public, its auto-stop minutes and who created it, plus the org's `limit` on how many it may have at once. Sandboxes are shared by everyone in the organization, and people watch what each one does on Monitor › Sandboxes.",
     {},
     async () => runTool(() => listSandboxes(env, ctx)),
   );
 
   server.tool(
     "sandbox_create",
-    "Create a sandbox for this organization and wait (up to ~90 s) for it to start: a Debian VM with Python and Node unless `snapshot` names another image. Private, auto-stops after 60 idle minutes, deleted a week after it stops. Refused with `plan_limit` when the organization already has as many as it may. A typical dev loop: sandbox_create → sandbox_exec (git clone, install) → sandbox_run_background (start the dev server bound to 0.0.0.0) → sandbox_preview_url → sandbox_logs. Sandboxes run on Trov's account: stop or delete them when done.",
+    "Create a sandbox for this organization and wait (up to ~90 s) for it to start: a Debian VM with Python and Node unless `snapshot` names another image. Private, auto-stops after 60 idle minutes, deleted a week after it stops. Prefer a `profile` (sandbox_list_profiles) when one fits: it sets the size and image and BOOTS the sandbox — clones the repository (private ones too), runs the setup steps and starts the app — and sandbox_get shows the boot until it reads `ready`. Refused with `plan_limit` when the organization already has as many as it may. Without a profile, a typical loop: sandbox_create → sandbox_exec (git clone, install) → sandbox_run_background (the dev server bound to 0.0.0.0) → sandbox_preview_url → sandbox_logs. Sandboxes run on Trov's account: stop or delete them when done.",
     {
+      name: z.string().optional().describe("What to call it: lowercase letters, digits and dashes, unique in the org. Default: the profile's key (or `sandbox`) and four random characters."),
+      profile: z.string().optional().describe("A profile's key, from sandbox_list_profiles."),
+      branch: z.string().optional().describe("With a profile: the branch to clone instead of the profile's own."),
       snapshot: z.string().optional().describe("A Daytona snapshot to boot from; omit for the default image."),
       env: z.record(z.string(), z.string()).optional().describe("Environment variables for the sandbox."),
       public: z.boolean().optional().describe("Make its preview URLs work without a token. Default false."),
@@ -869,7 +872,14 @@ function registerSandboxTools(server: McpServer, env: Env, ctx: TenantContext): 
     async (args) => runTool(() => createSandbox(env, ctx, args)),
   );
 
-  server.tool("sandbox_get", "Read-only: one sandbox's current state and settings.", { sandbox: SANDBOX_ARG },
+  server.tool(
+    "sandbox_list_profiles",
+    "Read-only: the organization's sandbox profiles — what sandbox_create's `profile` boots: each one's key, repository and branch, size, the boot steps it runs, the command it starts and the port it waits for, and the names (never the values) of the environment variables it sets. Admins edit them in Org settings › Sandboxes.",
+    {},
+    async () => runTool(() => listSandboxProfiles(env, ctx)),
+  );
+
+  server.tool("sandbox_get", "Read-only: one sandbox's current state and settings, and for one created from a profile how its boot stands (`boot`: booting / ready / failed, with the steps done).", { sandbox: SANDBOX_ARG },
     async (args) => runTool(() => getSandbox(env, ctx, args)));
 
   server.tool("sandbox_start", "Start a stopped sandbox and wait for it. Its disk is as it was; processes are not.", { sandbox: SANDBOX_ARG },

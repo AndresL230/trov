@@ -12,6 +12,7 @@ import { pruneSyncRuns } from "./platform/sweeps";
 import { backfillDocLinks } from "./platform/doc-links-backfill";
 import { platform } from "./data/context";
 import { pruneLimits } from "./platform/limits";
+import { takePendingBoots } from "./sandboxes/pending";
 import { mcpUnauthorized, oauthOrigin } from "./auth/oauth";
 import { DAILY_CRON, WEEKLY_CRON, handleNotificationCron } from "./notifications/cron";
 import { REPO_CRON, handleRepoCron } from "./repo/cron";
@@ -51,7 +52,11 @@ async function serve(request: Request, env: Env, ctx: ExecutionContext, url: URL
     // lazy initialiser, so the MCP server, its SDK and the tool modules only it reaches are evaluated by the
     // isolate that first answers /mcp, never by one that only serves the app (docs/architecture/env.md › Bundle).
     const { handleMcp } = await import("./mcp");
-    return handleMcp(request, env, ctx, bearer.conn);
+    const res = await handleMcp(request, env, ctx, bearer.conn);
+    // A sandbox_create from a profile left its boot pending (src/sandboxes/pending.ts): start it here, outside the
+    // MCP import graph, since cloning a private repository needs a GitHub token (CLAUDE.md invariant 12).
+    if (takePendingBoots()) ctx.waitUntil(import("./sandboxes/boot").then((m) => m.drainBoots(env)));
+    return res;
   }
   // Trov's OWN app metrics endpoint (contract v3, src/internal-metrics.ts): the SAME bearer class as /mcp — a Trov MCP
   // credential, its organization chosen only by src/data/bearer.ts — read-only, D1-only, before the cookie-only app.
@@ -162,6 +167,10 @@ export default {
       await handleNotificationCron(env, controller.cron, new Date(controller.scheduledTime));
       return;
     }
-    if (controller.cron === REPO_CRON) await handleRepoCron(env, controller.scheduledTime);
+    if (controller.cron === REPO_CRON) {
+      await handleRepoCron(env, controller.scheduledTime);
+      // A profile boot whose note an isolate lost (src/sandboxes/pending.ts) starts here at the latest.
+      await import("./sandboxes/boot").then((m) => m.drainBoots(env)).catch(() => undefined);
+    }
   },
 } satisfies ExportedHandler<Env>;

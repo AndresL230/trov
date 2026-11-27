@@ -217,7 +217,124 @@ export async function runOp(d: Daytona, req: OpRequest): Promise<unknown> {
       return { url: (await d.signedPreviewUrl(sb.id, port, expires)).url, expires_in_seconds: expires };
     }
 
+    case "boot": {
+      // A profile's boot, started and left running: Trov reads how it went with boot_status.
+      const sb = await owned(d, org, str(args, "sandbox")!);
+      const script = bootScript(parseBoot(args));
+      const home = (await d.exec(sb.id, `bash -lc ${shq('mkdir -p "$HOME/.trov" && printf %s "$HOME"')}`, { timeoutSeconds: 30 })).output.trim() || "/home/daytona";
+      await d.uploadFile(sb.id, `${home}/.trov/boot.sh`, script);
+      const r = await d.runInSession(sb.id, BOOT_SESSION, `bash ${shq(`${home}/.trov/boot.sh`)}`, true);
+      return { started: true, command_id: r.commandId };
+    }
+
+    case "boot_status": {
+      const sb = await owned(d, org, str(args, "sandbox")!);
+      if (sb.state !== "started") return { state: sb.state ?? null, steps: [], done: null };
+      const r = await d.exec(sb.id, `bash -lc ${shq('T="$HOME/.trov"; cat "$T/boot.tsv" 2>/dev/null; echo @@; cat "$T/boot.done" 2>/dev/null')}`, { timeoutSeconds: 30 });
+      const [tsv, done] = r.output.split("@@");
+      const steps = parseBootTsv(tsv ?? "");
+      const failed = steps.find((s) => s.exit !== 0);
+      let output: string | null = null;
+      if (failed) {
+        const log = await d.exec(sb.id, `bash -lc ${shq(`tail -c 4000 "$HOME/.trov/step-${failed.i}.log" 2>/dev/null`)}`, { timeoutSeconds: 30 });
+        output = log.output;
+      }
+      const d0 = (done ?? "").trim();
+      return { state: sb.state, steps, done: d0 === "ready" || d0 === "failed" ? d0 : null, output };
+    }
+
+    case "inspect": {
+      // Refresh in the web app: what each of the org's sandboxes is doing right now.
+      const { items } = await d.listSandboxes({ limit: 200, labels: { [ORG_LABEL]: org } });
+      const mine = items.filter((s) => s.labels?.[ORG_LABEL] === org);
+      const sandboxes = await Promise.all(mine.map(async (sb) => {
+        const view = sandboxView(sb);
+        if (sb.state !== "started") return { ...view, disk_used_gib: null, ports: [], processes: [] };
+        try {
+          const r = await d.exec(sb.id, `bash -lc ${shq(INSPECT)}`, { timeoutSeconds: 20 });
+          return { ...view, ...parseInspect(r.output) };
+        } catch {
+          return { ...view, disk_used_gib: null, ports: [], processes: [] };
+        }
+      }));
+      return { sandboxes };
+    }
+
     default:
       throw new OpError("bad_request", `unknown op ${op}`);
   }
+}
+
+// ── profile boots ────────────────────────────────────────────────────────────
+// A boot is ONE script, uploaded and run in the `trov-boot` session. It writes one line per step to
+// ~/.trov/boot.tsv (index, exit code, milliseconds), each step's output to ~/.trov/step-<i>.log, and
+// ~/.trov/boot.done ("ready" or "failed") at the end; it stops at the first failing step. The clone URL
+// may carry a short-lived token: the script deletes itself first, and the clone's remote is reset to the
+// clean URL, so the token is not left on the disk.
+
+export const BOOT_SESSION = "trov-boot";
+
+export interface BootPlan {
+  clone: { url: string; clean_url: string; branch: string } | null;
+  setup: string[];
+  start: { cmd: string; port: number | null } | null;
+}
+
+function parseBoot(args: Record<string, unknown>): BootPlan {
+  const c = args.clone as Record<string, unknown> | null | undefined;
+  const clone = c && typeof c === "object"
+    ? { url: str(c, "url")!, clean_url: str(c, "clean_url")!, branch: str(c, "branch")! }
+    : null;
+  if (clone && !/^https:\/\//.test(clone.url)) throw new OpError("bad_request", "clone.url must be https");
+  const setup = Array.isArray(args.setup) ? args.setup : [];
+  if (!setup.every((x) => typeof x === "string")) throw new OpError("bad_request", "setup must be a list of commands");
+  const s = args.start as Record<string, unknown> | null | undefined;
+  const start = s && typeof s === "object" ? { cmd: str(s, "cmd")!, port: num(s, "port") ?? null } : null;
+  return { clone, setup: setup as string[], start };
+}
+
+export function bootScript(plan: BootPlan): string {
+  const lines = [
+    "#!/usr/bin/env bash",
+    'rm -f -- "$0"',
+    'T="$HOME/.trov"; mkdir -p "$T"; : > "$T/boot.tsv"; rm -f "$T/boot.done"',
+    "now() { date +%s%3N; }",
+    'step() { local i="$1" s e; s=$(now); bash -lc "$2" > "$T/step-$i.log" 2>&1; e=$?; ' +
+      'printf "%s\\t%s\\t%s\\n" "$i" "$e" "$(( $(now) - s ))" >> "$T/boot.tsv"; ' +
+      'if [ "$e" -ne 0 ]; then echo failed > "$T/boot.done"; exit 0; fi; }',
+    'cd "$HOME"',
+  ];
+  let i = 0;
+  if (plan.clone) {
+    const { url, clean_url, branch } = plan.clone;
+    lines.push(`step ${i++} ${shq(`git clone --depth 1 --branch ${shq(branch)} -- ${shq(url)} repo && git -C repo remote set-url origin ${shq(clean_url)}`)}`);
+    lines.push('cd "$HOME/repo"');
+  }
+  for (const cmd of plan.setup) lines.push(`step ${i++} ${shq(cmd)}`);
+  if (plan.start) {
+    lines.push(`nohup bash -lc ${shq(plan.start.cmd)} > "$T/start.log" 2>&1 &`);
+    if (plan.start.port) {
+      const p = plan.start.port;
+      lines.push(`step ${i++} ${shq(`for n in $(seq 1 180); do (exec 3<>/dev/tcp/127.0.0.1/${p}) 2>/dev/null && exit 0; sleep 1; done; echo "Nothing answered on port ${p} after 3 minutes."; tail -n 40 "$HOME/.trov/start.log"; exit 1`)}`);
+    }
+  }
+  lines.push('echo ready > "$T/boot.done"');
+  return `${lines.join("\n")}\n`;
+}
+
+export function parseBootTsv(tsv: string): { i: number; exit: number; ms: number }[] {
+  return tsv.split("\n").map((l) => l.trim().split("\t")).filter((p) => p.length === 3 && p.every((x) => /^\d+$/.test(x)))
+    .map(([i, exit, ms]) => ({ i: Number(i), exit: Number(exit), ms: Number(ms) }));
+}
+
+// The toolbox's own ports, not the app's.
+const DAYTONA_PORTS = new Set([2280, 22220, 22221, 22222, 33333]);
+const INSPECT = 'df -k --output=used "$HOME" 2>/dev/null | tail -1; echo @@; ss -ltnH 2>/dev/null | awk \'{print $4}\'; echo @@; ps -eo args= 2>/dev/null | grep -v -e "^\\[" -e "^ps " -e "^bash -lc" -e "^/usr/local/bin/daytona" -e "^sleep " -e "^grep " | head -n 20';
+
+export function parseInspect(out: string): { disk_used_gib: number | null; ports: number[]; processes: string[] } {
+  const [df = "", ss = "", ps = ""] = out.split("@@");
+  const kb = Number(df.trim());
+  const ports = [...new Set(ss.split("\n").map((l) => Number(l.trim().split(":").pop())).filter((p) => Number.isInteger(p) && p > 0 && !DAYTONA_PORTS.has(p)))].sort((a, b) => a - b);
+  const processes = ps.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => l.slice(0, 200));
+  return { disk_used_gib: Number.isFinite(kb) && df.trim() ? Math.round((kb / 1048576) * 10) / 10 : null, ports, processes };
 }

@@ -283,6 +283,8 @@
   unique index — `ask.md`, `ai.md`; `notification_outbox.attempted_at` (the digest retry's lease — `notifications.md`),
   `org_github_installations.suspension_at` / `.repos_changed_at` — `github-app.md`].
   Then `0089_sandboxes` [`org_sandboxes`: which Daytona sandboxes are each org's, who made and deleted them — `sandboxes.md`].
+  Then `0090_sandbox_monitor` [sandbox names, profiles and boots, `sandbox_events` (the record of every sandbox call), the org's
+  two sandbox rules — `sandboxes.md`].
 - Projects: `shared/projects-core.ts` (zod-free: the vocabulary, limits, DTOs, `PROJECT_ROUTES`, `projectSlug`),
   `shared/projects.ts` (zod), `src/data/projects.ts` (the rows), `src/tools/projects.ts` (the access rule, the writers,
   the reads), `src/projects/routes.ts` (the cookie routes at `/projects`), `src/ai/ask/project.ts` (Ask in a project),
@@ -290,6 +292,9 @@
 - Sandboxes: `src/tools/sandboxes.ts` (the switch `sandboxesEnabled`, ownership, the rows and their reconcile, the
   call to the trov-sandbox Worker), `registerSandboxTools` in `src/mcp.ts`; the runner itself is the second Worker in
   this repo, `workers/sandbox/` (its own `wrangler.toml`, `pnpm run deploy:sandbox`) — `sandboxes.md`.
+  `src/sandboxes/`: `routes.ts` (Monitor › Sandboxes and Org settings › Sandboxes, cookie only), `boot.ts` (starting
+  profile boots, outside the MCP graph), `pending.ts` (the note between them); `shared/sandboxes-core.ts` (DTOs, profile
+  validation, the story rule).
 - The Sample workspace: `src/orgs/sample.ts` (`createSampleOrg`, the one-per-person guard, the seed's statements,
   `reachesOutside` — the outbound routes a sample refuses), `src/orgs/sample-content.ts` (its made-up content, pure
   data) — `organizations.md` › 1e.

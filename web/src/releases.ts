@@ -124,12 +124,14 @@ export const RELEASES: Release[] = [
       "Publish the Trov plugin 0.12.1: the handoff and trov skills drop the one-handoff-per-session rule.",
       "A duplicate Pro subscription is cancelled automatically but not refunded: refund it by hand in Stripe — Platform's `billing.duplicate` audit row names both subscriptions.",
       "Sandboxes (#227): `npm run deploy:sandbox` and set that Worker's `DAYTONA_API_KEY` secret, then uncomment the `SANDBOX` service binding in wrangler.toml — a binding to a missing Worker fails the deploy.",
-      "Apply `0089_sandboxes` (merging applies it). Sandboxes stay off for every organization until a superadmin sets its Sandboxes limit in Platform.",
+      "Apply `0089_sandboxes` and `0090_sandbox_monitor` (merging applies them). Pro then has 3 sandboxes and Enterprise no limit; a Platform override of 0 turns them off.",
+      "Redeploy trov-sandbox (`pnpm run deploy:sandbox`) for profile boots and Refresh (#230).",
     ],
     patches: {
       added: [
         "Tickets: GitHub issues are off the board until the Filter's Source shows them, and the Open / Closed / All pick is remembered (#226)",
         "Agents in an organization with sandboxes turned on can run code in cloud sandboxes and open what they serve in a browser (#227)",
+        "Pro includes three sandboxes, Enterprise any number; agents name them, boot them from your org's profiles, and Trov keeps a record of each call (#230)",
       ],
       changed: [
         "A sprint finished long ago no longer shows as finished this week, and agents read a prompt's published version (#225)",
@@ -153,7 +155,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [225, 226, 227, 228],
+    prs: [225, 226, 227, 228, 230],
   },
   // The Sample workspace every new person gets at sign-up: one PR.
   {

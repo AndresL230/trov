@@ -70,7 +70,7 @@ const rows = (orgId: string) =>
 
 const SANDBOX_TOOLS = [
   "sandbox_configure", "sandbox_create", "sandbox_delete", "sandbox_exec", "sandbox_get", "sandbox_list", "sandbox_list_files",
-  "sandbox_logs", "sandbox_preview_url", "sandbox_read_file", "sandbox_run_background", "sandbox_start", "sandbox_stop", "sandbox_write_file",
+  "sandbox_list_profiles", "sandbox_logs", "sandbox_preview_url", "sandbox_read_file", "sandbox_run_background", "sandbox_start", "sandbox_stop", "sandbox_write_file",
 ];
 
 beforeEach(() => { runner = fakeRunner(); });
@@ -84,18 +84,19 @@ describe("listing", () => {
     await m.close();
   });
 
-  it("with the binding and the org switched on: the 14 tools, the reads marked read-only", async () => {
+  it("with the binding and the org switched on: the 15 tools, the reads marked read-only", async () => {
     const m = await connect(await bearerCtx("AndresL230"), withRunner());
     const tools = (await m.client.listTools()).tools.filter((t) => t.name.startsWith("sandbox_"));
     expect(tools.map((t) => t.name).sort()).toEqual(SANDBOX_TOOLS);
     expect(tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort())
-      .toEqual(["sandbox_get", "sandbox_list", "sandbox_list_files", "sandbox_logs", "sandbox_read_file"]);
+      .toEqual(["sandbox_get", "sandbox_list", "sandbox_list_files", "sandbox_list_profiles", "sandbox_logs", "sandbox_read_file"]);
     await m.close();
   });
 });
 
 describe("the switch", () => {
-  it("cap 0 (every plan's default): every tool refuses not_enabled and the runner is never asked", async () => {
+  it("off (a Platform override of 0): every tool refuses not_enabled and the runner is never asked", async () => {
+    await setCap(ORG_A, 0);
     const m = await connect(await bearerCtx("AndresL230"), withRunner());
     for (const name of SANDBOX_TOOLS) {
       const r = await m.call(name, { sandbox: "sb-1", command: "id", path: "/", content: "", port: 80, command_id: "c" });
@@ -104,6 +105,20 @@ describe("the switch", () => {
     }
     expect(runner.calls).toEqual([]);
     await m.close();
+  });
+
+  it("a plan without sandboxes (Free) refuses not_enabled, naming the plan", async () => {
+    await e.DB.prepare(`UPDATE orgs SET plan = 'free' WHERE id = ?`).bind(ORG_A).run();
+    try {
+      const m = await connect(await bearerCtx("AndresL230"), withRunner());
+      const r = await m.call("sandbox_list");
+      expect(r.body.code).toBe("not_enabled");
+      expect(r.body.error).toMatch(/plan doesn't include sandboxes/);
+      expect(runner.calls).toEqual([]);
+      await m.close();
+    } finally {
+      await e.DB.prepare(`UPDATE orgs SET plan = 'enterprise' WHERE id = ?`).bind(ORG_A).run();
+    }
   });
 
   it("a Sample workspace is refused even with a cap", async () => {

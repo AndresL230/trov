@@ -628,6 +628,8 @@ export function plumbingDeleteStatements() {
     `DELETE FROM doc_imports WHERE org_id = ${O} AND file_name = '${DEV}-handbook.zip'`,
     // Sandboxes (0089_sandboxes): the two rows below.
     `DELETE FROM org_sandboxes WHERE org_id = ${O} AND sandbox_id LIKE '${DEV}-%'`,
+    `DELETE FROM sandbox_events WHERE org_id = ${O} AND sandbox_id LIKE '${DEV}-%'`,
+    `DELETE FROM sandbox_profiles WHERE org_id = ${O} AND key LIKE '${DEV}-%'`,
   ];
 }
 function plumbingStatements(c) {
@@ -664,8 +666,27 @@ function plumbingStatements(c) {
   s.push(insert("doc_imports", { org_id: O, space_slug: "engineering", parent_slug: null, file_name: `${DEV}-handbook.zip`, started_by: JOSE, started_at: c.days(6), updated_at: c.days(5.99), ended_at: c.days(5.99), status: "done", counts: { pages: 4, images: 1, skipped: 0 }, failures: [], total: 5 }));
   // Sandboxes (0089_sandboxes): one Jose made and still has, one Andres made and deleted. Rows only — a local Trov has no
   // SANDBOX binding, so no sandbox tool is listed and nothing reaches Daytona (docs/architecture/sandboxes.md).
-  s.push(insert("org_sandboxes", { org_id: O, sandbox_id: `${DEV}-sb-gradebook`, created_by: JOSE, created_at: c.days(1.5), deleted_at: null, deleted_by: null }));
-  s.push(insert("org_sandboxes", { org_id: O, sandbox_id: `${DEV}-sb-vite`, created_by: ME, created_at: c.days(4), deleted_at: c.days(3.8), deleted_by: ME }));
+  // 0090_sandbox_monitor: a profile, the first one booted from it, and what each did (Monitor › Sandboxes).
+  const WEB = `${DEV}-web`;
+  s.push(insert("sandbox_profiles", { org_id: O, key: WEB, name: "Web app", description: "The SPA with its dev server on 5173.", repo: REPO, branch: "main", size: "medium", image: null,
+    setup: ["npm ci"], start_cmd: "npm run dev -- --host 0.0.0.0", port: 5173, env: { NODE_ENV: "development" }, auto_stop: 60, delete_days: 7,
+    created_by: ME, created_at: c.days(10), updated_by: ME, updated_at: c.days(10), deleted_at: null, deleted_by: null }));
+  s.push(insert("org_sandboxes", { org_id: O, sandbox_id: `${DEV}-sb-gradebook`, created_by: JOSE, created_at: c.days(1.5), deleted_at: null, deleted_by: null,
+    name: "gradebook-fix", profile_key: WEB, boot_state: "ready", boot_detail: { steps: [`clone ${REPO}@main`, "npm ci", "npm run dev -- --host 0.0.0.0 (waits for port 5173)"], branch: "main", done: 3 } }));
+  s.push(insert("org_sandboxes", { org_id: O, sandbox_id: `${DEV}-sb-vite`, created_by: ME, created_at: c.days(4), deleted_at: c.days(3.8), deleted_by: ME,
+    name: "vite-spike", profile_key: null, boot_state: "none", boot_detail: null }));
+  const sbEvent = (sandbox, at, actor, source, tool, subject, extra = {}) =>
+    insert("sandbox_events", { org_id: O, sandbox_id: `${DEV}-${sandbox}`, at, actor, source, tool, subject, result: "", exit_code: null, ms: null, failed: 0, output: null, ...extra });
+  s.push(sbEvent("sb-gradebook", c.days(1.5), JOSE, "agent", "sandbox_create", `from ${WEB}`, { result: "started", ms: 6200 }));
+  s.push(sbEvent("sb-gradebook", c.days(1.499), JOSE, "boot", "boot_step", `clone ${REPO}@main`, { exit_code: 0, ms: 2100 }));
+  s.push(sbEvent("sb-gradebook", c.days(1.498), JOSE, "boot", "boot_step", "npm ci", { exit_code: 0, ms: 41000 }));
+  s.push(sbEvent("sb-gradebook", c.days(1.497), JOSE, "boot", "boot_step", "npm run dev -- --host 0.0.0.0 (waits for port 5173)", { exit_code: 0, ms: 3800 }));
+  s.push(sbEvent("sb-gradebook", c.days(1.49), JOSE, "agent", "sandbox_exec", "npm test -- gradebook", { exit_code: 1, failed: 1, ms: 9100, output: "FAIL src/gradebook.test.ts\n  expected 92 to be 93" }));
+  s.push(sbEvent("sb-gradebook", c.days(1.489), JOSE, "agent", "sandbox_write_file", "src/gradebook.ts", { result: "2140 bytes", ms: 300 }));
+  s.push(sbEvent("sb-gradebook", c.days(1.488), JOSE, "agent", "sandbox_exec", "npm test -- gradebook", { exit_code: 0, ms: 8700 }));
+  s.push(sbEvent("sb-vite", c.days(4), ME, "agent", "sandbox_create", "", { result: "started", ms: 5400 }));
+  s.push(sbEvent("sb-vite", c.days(3.99), ME, "agent", "sandbox_run_background", "npm run dev -- --host 0.0.0.0", { result: "cmd-1" }));
+  s.push(sbEvent("sb-vite", c.days(3.8), ME, "person", "sandbox_delete", "", { result: "deleted" }));
   // Sync GitHub runs, and what the AI pass still has to look at.
   s.push(insert("sync_runs", { org_id: O, repo: REPO, started_by: ME, started_at: c.days(9), updated_at: c.days(8.99), ended_at: c.days(8.99), status: "ok", batch: 4, batches: 4, phase: "done", done: 412, total: 412, counts: { prs: 58, issues: 31, runs: 240, deploys: 83 }, failures: [], previous_at: c.days(30) }));
   s.push(insert("sync_runs", { org_id: O, repo: REPO, started_by: JACK, started_at: c.days(2), updated_at: c.days(1.99), ended_at: c.days(1.99), status: "partial", batch: 3, batches: 3, phase: "done", done: 120, total: 131, counts: { prs: 14, issues: 6, runs: 100 }, failures: [{ code: "reconcile:deployments", via: "token" }], previous_at: c.days(9) }));

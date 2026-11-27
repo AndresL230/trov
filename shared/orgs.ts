@@ -117,6 +117,8 @@ export const ORG_AUDIT_ACTIONS = [
   "app.set", "app.delete",
   // A repository's Repo-screen defaults (0071_repo_settings, src/data/repo-settings.ts): the Overview's Group by.
   "repo.settings",
+  // Sandboxes (0090_sandbox_monitor, Org settings › Sandboxes): the org's rules changed; a profile saved or deleted.
+  "sandbox.rules", "sandbox.profile_set", "sandbox.profile_delete",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];
 

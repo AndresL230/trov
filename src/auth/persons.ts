@@ -299,6 +299,9 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["orgs", "logo_by"],
   // Sandboxes (0089_sandboxes): who created and who deleted each.
   ["org_sandboxes", "created_by"], ["org_sandboxes", "deleted_by"],
+  // 0090_sandbox_monitor: who did what in a sandbox, and who made, changed and removed each profile.
+  ["sandbox_events", "actor"],
+  ["sandbox_profiles", "created_by"], ["sandbox_profiles", "updated_by"], ["sandbox_profiles", "deleted_by"],
   // Plans and grants (0044_plans): who changed an org's plan; a grant's person, granter, user and revoker.
   ["orgs", "plan_changed_by"],
   ["org_grants", "person"], ["org_grants", "granted_by"], ["org_grants", "used_by"], ["org_grants", "revoked_by"],

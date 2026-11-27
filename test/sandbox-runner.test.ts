@@ -3,6 +3,7 @@
 // switch, the limit, ownership in D1) is test/sandboxes.test.ts.
 import { beforeEach, describe, expect, it } from "vitest";
 import { handle } from "../workers/sandbox/src/index";
+import { bootScript, parseBootTsv, parseInspect } from "../workers/sandbox/src/ops";
 
 const API = "https://daytona.fake/api";
 const PROXY = "https://proxy.fake/toolbox";
@@ -216,5 +217,30 @@ describe("the dev loop", () => {
     const r = (await op("org_a", "exec", { sandbox: sb.id, command: "big" })).body.result;
     expect(r.output.endsWith("END")).toBe(true);
     expect(r.output).toMatch(/^\[\.\.\.\d+ earlier chars cut/);
+  });
+});
+
+describe("profile boots (pure)", () => {
+  it("the script deletes itself, numbers its steps, resets the clone's remote and waits for the port", () => {
+    const sh = bootScript({
+      clone: { url: "https://x-access-token:TOKEN@github.com/a/b.git", clean_url: "https://github.com/a/b.git", branch: "main" },
+      setup: ["npm ci", "echo 'it''s'"], start: { cmd: "npm run dev", port: 5173 },
+    });
+    const lines = sh.trim().split("\n");
+    expect(lines[1]).toBe('rm -f -- "$0"');
+    expect(sh).toContain("remote set-url origin");
+    expect(lines.filter((l) => l.startsWith("step ")).map((l) => l.split(" ")[1])).toEqual(["0", "1", "2", "3"]);
+    expect(sh).toContain("nohup bash -lc 'npm run dev'");
+    expect(sh).toContain("/dev/tcp/127.0.0.1/5173");
+    expect(lines.at(-1)).toBe('echo ready > "$T/boot.done"');
+  });
+  it("no repository and no start command: just the setup steps", () => {
+    const sh = bootScript({ clone: null, setup: ["make"], start: null });
+    expect(sh).not.toContain("git clone");
+    expect(sh.split("\n").filter((l) => l.startsWith("step "))).toHaveLength(1);
+  });
+  it("parses the step lines and the inspect output", () => {
+    expect(parseBootTsv("0\t0\t812\n1\t2\t40\njunk\n")).toEqual([{ i: 0, exit: 0, ms: 812 }, { i: 1, exit: 2, ms: 40 }]);
+    expect(parseInspect("1048576\n@@\n0.0.0.0:5173\n*:2280\n[::]:8080\n@@\nnode /app/vite\n")).toEqual({ disk_used_gib: 1, ports: [5173, 8080], processes: ["node /app/vite"] });
   });
 });
