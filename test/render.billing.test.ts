@@ -56,7 +56,7 @@ describe("Org settings › General — the Plan block of an org that pays, or ca
     const row = (h: string): string => words(h.slice(h.indexOf('data-limit="ai_summaries"')).split("</li>")[0]);
     expect(row(html)).toMatch(/AI summaries .* 1,212 of 3,000 this month\s*$/);
     expect(html).not.toContain("3000");
-    expect(html.match(/data-limit="/g)).toHaveLength(9); // the listed limits: every key but `ai_runs`, `ai_chat` and `project_pins`
+    expect(html.match(/data-limit="/g)).toHaveLength(10); // the listed limits: every key but `ai_runs`, `ai_chat` and `project_pins`
     // Billing's line and buttons are exactly what they were without it.
     expect(html).toContain('data-org-billing="active"');
     expect(buttons(html)).toEqual(["Change seats|orgBillingSeats", "Manage billing|orgBillingPortal", "Cancel plan|orgBillingCancel"]);

@@ -219,6 +219,10 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `INSERT INTO project_pins (org_id, project_id, ref, added_by, added_at) VALUES (?, ?, 'doc:rename', ?, ?)`, org, project, handle, nowIso());
   // 0089_sandboxes: a sandbox the person created and deleted.
   await run(env.DB, `INSERT INTO org_sandboxes (org_id, sandbox_id, created_by, created_at, deleted_at, deleted_by) VALUES (?, ?, ?, ?, ?, ?)`, org, `sb-${handle}`, handle, nowIso(), nowIso(), handle);
+  // 0090_sandbox_monitor: what they ran in it, and a profile they made, edited and deleted.
+  await run(env.DB, `INSERT INTO sandbox_events (org_id, sandbox_id, at, actor, source, tool) VALUES (?, ?, ?, ?, 'agent', 'sandbox_exec')`, org, `sb-${handle}`, nowIso(), handle);
+  await run(env.DB, `INSERT INTO sandbox_profiles (org_id, key, name, created_by, created_at, updated_by, updated_at, deleted_at, deleted_by) VALUES (?, ?, 'P', ?, ?, ?, ?, ?, ?)`,
+    org, `p-${handle}`.toLowerCase().slice(0, 40), handle, nowIso(), handle, nowIso(), nowIso(), handle);
 }
 
 describe("renamePerson", () => {

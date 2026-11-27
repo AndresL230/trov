@@ -75,7 +75,7 @@ describe("entitlements — the plan's defaults with the org's overrides on top",
     });
     expect(PLANS.team).toEqual({
       id: "team", name: "Pro", description: "For a team, paid per seat.",
-      entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 300, tags: 50, projects: null, project_pins: 200, sandboxes: 0 },
+      entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 300, tags: 50, projects: null, project_pins: 200, sandboxes: 3 },
       features: [], offered: true, billing: null, perSeat: ["ai_chat"],
     });
     // An org or grant already on Personal keeps its limits.
