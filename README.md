@@ -67,11 +67,11 @@ skills and auto-wires the MCP server in one step, so there's nothing to copy by 
 
 ## Develop
 
-- `npm test` — Vitest against a real Miniflare D1
-- `npm run typecheck` — type-check worker + web
-- `npm run dev` — build web, then `wrangler dev`
-- `npm run deploy` — build web, then `wrangler deploy`
-- `npm run db:create` / `db:migrate:local` / `db:migrate:remote` — D1 provisioning + migrations
+- `pnpm test` — Vitest against a real Miniflare D1
+- `pnpm run typecheck` — type-check worker + web
+- `pnpm run dev` — build web, then `wrangler dev`
+- `pnpm run deploy` — build web, then `wrangler deploy`
+- `pnpm run db:create` / `db:migrate:local` / `db:migrate:remote` — D1 provisioning + migrations
 
 ## Auth & secrets
 

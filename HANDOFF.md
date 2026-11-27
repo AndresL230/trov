@@ -18,7 +18,7 @@ another account your login reaches.
 
 ## 1. Before a merge
 
-1. `npm test` and `npm run typecheck` are green locally (typecheck is not part of `npm test`), and CI is
+1. `pnpm test` and `pnpm run typecheck` are green locally (typecheck is not part of `pnpm test`), and CI is
    green on the pull request.
 2. The pull request's one patch line is in the top entry of `web/src/releases.ts`, with an `ops` line for every
    migration, secret, var or trigger change it carries. The merging PR cuts the version (that file's header).
@@ -32,7 +32,7 @@ another account your login reaches.
 
 ## 2. A merge to `main`
 
-A merge to `main` IS a production deploy. Workers Builds builds the web bundle (`npm run build:web`) and runs
+A merge to `main` IS a production deploy. Workers Builds builds the web bundle (`pnpm run build:web`) and runs
 the production deploy command, which:
 
 - **applies every migration not yet recorded** in the production database's `d1_migrations`, and
@@ -52,7 +52,7 @@ is still serving against the new schema — which is why step 3 above matters; f
 the Worker.** Verified 2026-10-09.
 
 This is a Cloudflare build setting, not a decision in the code, and the owner intends to change it: the
-non-production deploy command in Workers Builds is meant to be `npm run deploy:preview` (which migrates and
+non-production deploy command in Workers Builds is meant to be `pnpm run deploy:preview` (which migrates and
 deploys only the Preview's own empty database, `trov-preview` — `docs/architecture/env.md` › Preview
 deployments). While it is the production command, Cloudflare refuses the Worker deploy from a branch build
 but not the `d1 migrations apply`.
@@ -70,12 +70,12 @@ Until the setting is changed:
 
 ```bash
 CLOUDFLARE_ACCOUNT_ID=<account_id from wrangler.toml> \
-  npx wrangler d1 execute trov --remote \
+  pnpm exec wrangler d1 execute trov --remote \
   --command "SELECT id, name, applied_at FROM d1_migrations ORDER BY id DESC LIMIT 10"
 ```
 
 Compare the names with `ls migrations/` on `main`: a name production has that `main` does not came from a
-branch push. `npx wrangler d1 migrations list trov --remote` (also read-only) lists what the current checkout
+branch push. `pnpm exec wrangler d1 migrations list trov --remote` (also read-only) lists what the current checkout
 has that production has not.
 
 **To confirm the setting was changed:** push a branch carrying a throwaway additive migration, run the query
@@ -86,9 +86,9 @@ above, and see that production did NOT record it (the Preview's database did).
 The full list — what each is, and what happens without it — is `docs/architecture/env.md`. No value is ever
 written in this repo, a log or a response.
 
-- **Set a secret:** `npx wrangler secret put <NAME>` (it prompts for the value; pipe a file for a multi-line
-  one: `npx wrangler secret put GITHUB_APP_PRIVATE_KEY < key.pem`). **List the names that are set:**
-  `npx wrangler secret list`.
+- **Set a secret:** `pnpm exec wrangler secret put <NAME>` (it prompts for the value; pipe a file for a multi-line
+  one: `pnpm exec wrangler secret put GITHUB_APP_PRIVATE_KEY < key.pem`). **List the names that are set:**
+  `pnpm exec wrangler secret list`.
 - **Changing a secret redeploys.** `wrangler secret put` / `delete` creates a new production deployment at
   once, from the latest uploaded version of the Worker. Do it when that is the version you mean to run, and
   run the checks in section 6 afterwards.
@@ -107,7 +107,7 @@ written in this repo, a log or a response.
 A Workers Builds deploy does not update the schedule. After the merge:
 
 ```bash
-CLOUDFLARE_ACCOUNT_ID=<account_id from wrangler.toml> npx wrangler triggers deploy
+CLOUDFLARE_ACCOUNT_ID=<account_id from wrangler.toml> pnpm exec wrangler triggers deploy
 ```
 
 Check: the Worker's Settings › Triggers in the dashboard lists the three expressions in `wrangler.toml`.
@@ -147,20 +147,20 @@ Cloudflare cron weekdays are 1–7 or SUN–SAT, never 0. `REPO_CRON` in `src/re
 
 ## 7. Rollback
 
-- **The Worker:** `npx wrangler deployments list`, then `npx wrangler rollback [<version-id>]` to the version
+- **The Worker:** `pnpm exec wrangler deployments list`, then `pnpm exec wrangler rollback [<version-id>]` to the version
   before. It restores the Worker, not the database. Follow it by reverting the merge on `main` — otherwise
   the next merge (or secret change) ships the bad code again.
 - **A migration:** every migration since `0043` is additive, and its header carries the statements that undo
   it by hand (`0046_sync_runs`, one added table, states none), to be run together with a Worker rollback to
   the version from before it. Run them with
-  `npx wrangler d1 execute trov --remote --command "…"` only after the Worker no longer reads what they drop.
+  `pnpm exec wrangler d1 execute trov --remote --command "…"` only after the Worker no longer reads what they drop.
   A migration undone by hand is still recorded in `d1_migrations`: delete its row too, or it will never be
   applied again.
 - **`0042_organizations`** is all-or-nothing and has a GENERATED rollback,
   `scripts/mt/rollback/0042_organizations.down.sql` (`scripts/mt/build-rollback.py`; its header lists what is
   lost, and it refuses once a second organization exists).
-- **Data:** D1 Time Travel. Note a bookmark BEFORE a risky change (`npx wrangler d1 time-travel info trov`),
-  and restore with `npx wrangler d1 time-travel restore trov --bookmark=<bookmark>` inside its window. It
+- **Data:** D1 Time Travel. Note a bookmark BEFORE a risky change (`pnpm exec wrangler d1 time-travel info trov`),
+  and restore with `pnpm exec wrangler d1 time-travel restore trov --bookmark=<bookmark>` inside its window. It
   restores the WHOLE database, every organization's writes since included — and every account or
   organization DELETED since the bookmark comes back. Re-apply those deletions before anyone signs in:
   `docs/architecture/organizations.md` › §8 "After a restore" (the `person.delete` / `org.delete` rows of
@@ -205,7 +205,7 @@ relying on any of them.
   `canopy-health` / `canopy-metrics` user-agents, `tickets.source = 'canopy'`, and the accepted `canopy_*`
   token prefixes.
 - Do not activate Cloudflare Queues or Vectorize (deferred seams, `CLAUDE.md`).
-- Do not run `npm run build:web` under a running `wrangler dev` (it empties `web/dist`).
+- Do not run `pnpm run build:web` under a running `wrangler dev` (it empties `web/dist`).
 
 ## 10. Search engines and the zone (one-time, outside the repo)
 

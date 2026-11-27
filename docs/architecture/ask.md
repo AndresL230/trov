@@ -262,7 +262,7 @@ credential) and `src/repo/ask-github.ts` (the transport — the credential). Tes
   `provideAskLocalUpstream` because that module reads the billing config, which nothing under `src/ai/ask/` imports)
   and the GitHub transport (`<base>/github/…`). `scripts/dev/ask-github-stub.mjs` is such a stand-in (a scripted model
   and made-up repositories, the access check answered by login) and `scripts/seed/ask-github.mjs` its local seed (on
-  top of `npm run seed`; local D1 only). A deployed Worker never honours it (loopback only, never beside a live
+  top of `pnpm run seed`; local D1 only). A deployed Worker never honours it (loopback only, never beside a live
   Stripe key); the tests stub at the `Response` level instead.
 - **Permissions.** Everything read is inside the App's registered `READ_PERMISSIONS` (Metadata, Contents, Pull
   requests, Issues, Checks, Commit statuses; `github-app.md` › Permissions ↔ endpoints) — the access check included
@@ -647,7 +647,7 @@ real pacing and `GET …/ai/ask-replay` lists the rest; anywhere else both are 4
 switch off or no `ANTHROPIC_API_KEY` in `.dev.vars` (the AI read rule, `ai.md`; any value works, nothing is sent), so
 the screen shows its real off state there, as every other preview does.
 
-**The gallery** (for reviewing how Ask looks): `npm run ask:gallery [-- <out.html>]` writes ONE self-contained page
+**The gallery** (for reviewing how Ask looks): `pnpm run ask:gallery [<out.html>]` writes ONE self-contained page
 (default `.ask-gallery/ask-gallery.html`, gitignored) with every surface Ask can put on screen in every state — one
 plain scroll in conversation order, a one-line caption each, in the app's light theme only (the owner) (the owner: "I
 just want to be able to see everything", nothing complicated); whole screens (1440 and a 390 phone, in frames) last,
@@ -658,7 +658,7 @@ inspector's `ask-inspector-fixtures.ts`, the Repo Overview's sample) and calls t
 `trov.css` with its fonts, the orb loop (`orb.ts`) and the page's runtime (`runtime.ts`: light only, lazy frames,
 inert specimens). It has no `<html>`/`<head>`/`<body>` (it is published as a claude.ai
 Artifact, which wraps it). A new part or state goes in `specimens.ts` as one more `inline(…)` / `desktop(…)` /
-`phone(…)`; typecheck it with `npx tsc -p scripts/ask-gallery`.
+`phone(…)`; typecheck it with `pnpm exec tsc -p scripts/ask-gallery`.
 
 ## Tests
 

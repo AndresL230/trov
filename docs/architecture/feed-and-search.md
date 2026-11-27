@@ -198,7 +198,7 @@ the Feed's button sends; for them only; the record stays) IN SQL, before the LIM
 never short (owner ruling Q28; `test/ai.feed-wrong.test.ts`) and the separate "Wrong?" read is gone. Its `importance` is Phase C's `feed.importance` (Jev,
 `card:feed`), which the router's `feed_ingested` mark asks for like any entry. `LOCAL_AI_PREVIEW` merges two
 sample entries into `/feed` by `created_at` (respecting `author` / `about` / `tags` / `since` / `limit`) under `wrangler
-dev` only, never over MCP (`ai.md`); the local seed (`npm run seed`) has REAL Trov rows too — three digests with
+dev` only, never over MCP (`ai.md`); the local seed (`pnpm run seed`) has REAL Trov rows too — three digests with
 their `ai_sessions`, a skipped session and two `repo_state` versions (`fixtures/dev/ai.json`,
 `scripts/seed/build.mjs` › `aiStatements`; left out of the Guide demo), so the Feed and Repo › Summary show them
 without the preview. `test/ai.hookup.test.ts` proves the whole path on real rows.

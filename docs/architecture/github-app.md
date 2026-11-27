@@ -398,9 +398,9 @@ Nothing 500s.
 
 ## Owner checklist — production, in order
 
-1. **Secrets.** `npx wrangler secret put GITHUB_APP_ID` (paste the App's numeric id — "App ID" on its
+1. **Secrets.** `pnpm exec wrangler secret put GITHUB_APP_ID` (paste the App's numeric id — "App ID" on its
    settings page, not the client id), then
-   `npx wrangler secret put GITHUB_APP_PRIVATE_KEY < /path/to/your-app.private-key.pem` (the whole file
+   `pnpm exec wrangler secret put GITHUB_APP_PRIVATE_KEY < /path/to/your-app.private-key.pem` (the whole file
    GitHub generated; the redirect keeps its line breaks). `GITHUB_APP_WEBHOOK_SECRET` is already set. A
    secret change ships the latest uploaded build, so do this when that build is the one you mean to run.
 2. **The slug.** In `wrangler.toml` set `GITHUB_APP_SLUG = "<the last part of https://github.com/apps/…>"`

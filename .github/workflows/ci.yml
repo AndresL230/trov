@@ -16,17 +16,19 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      # Reads the pnpm version from package.json "packageManager".
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - name: Typecheck (worker + web)
-        run: npm run typecheck
+        run: pnpm run typecheck
       - name: Test suite
-        run: npm test
+        run: pnpm test
       - name: Web build
-        run: npm run build:web
+        run: pnpm run build:web
       - name: Rollback script is up to date with 0042_organizations
         run: |
           python3 scripts/mt/build-rollback.py

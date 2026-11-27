@@ -236,7 +236,7 @@ gone) says so — "Reload the page to try again" — and is not retried in a loo
 ## The app's bundles (`web/src/lazy-chunk.ts`, `web/src/landing-page.ts`)
 
 The signed-out landing and the app are separate bundles, and the app's screens that most people never open
-are chunks of their own, loaded when a screen first needs them. Measured with `npm run build:web` (gzip,
+are chunks of their own, loaded when a screen first needs them. Measured with `pnpm run build:web` (gzip,
 2026-10-16): before, `/` and every app page downloaded the same 453 kB of script (main 437, with What's new
 already a chunk); after, the signed-out `/` downloads 59 kB (the landing 26, what it shares with the app 15,
 morph 8, pricing 5, the rest small) and an app page 253 kB (main 218, the shared 15, the support controller 9,
@@ -540,7 +540,7 @@ client and an AGENTS.md / CLAUDE.md snippet), Concepts (the authority model), MC
   (`catalogTenant`: no org, no database) and lists `tools/list` through the SDK's client; the result is written
   to `shared/mcp-tools.generated.ts` (only when it changed) BEFORE anything reads it. The landing's MCP card (its
   count — "43 tools, plus 1 admin-only" — and its chips) reads the same file, grouped by `MCP_TOOL_GROUPS`
-  (`shared/mcp-tools-core.ts`). **A new or changed tool**: `npm run build:web` rewrites the file, and a new tool
+  (`shared/mcp-tools-core.ts`). **A new or changed tool**: `pnpm run build:web` rewrites the file, and a new tool
   needs a line in `MCP_TOOL_GROUPS`; `test/mcp-catalog.test.ts` fails on either until done.
 - **Client configs** (Connect): Claude Code (plugin, and `claude mcp add --transport http --scope user`), Claude
   Desktop / claude.ai (custom connector), Cursor (`mcpServers.url`), VS Code (`servers` + `"type": "http"`,

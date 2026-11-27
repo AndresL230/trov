@@ -29,12 +29,12 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 
 ## Commands
 
-- `npm test` — Vitest against a real Miniflare D1 (the source of truth for "is it green").
-  One file: `npx vitest run test/<file>.test.ts`.
-- `npm run typecheck` — `tsc` over worker + web. NOT part of `npm test`; run it too.
-- `npm run dev` — build web, `wrangler dev`, and a `vite build --watch` beside it: a web change is live on a
+- `pnpm test` — Vitest against a real Miniflare D1 (the source of truth for "is it green").
+  One file: `pnpm exec vitest run test/<file>.test.ts`.
+- `pnpm run typecheck` — `tsc` over worker + web. NOT part of `pnpm test`; run it too.
+- `pnpm run dev` — build web, `wrangler dev`, and a `vite build --watch` beside it: a web change is live on a
   plain reload. Never run `build:web` (which empties `web/dist`) under a running `wrangler dev`.
-- `npm run build:web`, `npm run deploy`; `npm run db:create` / `db:migrate:local` / `db:migrate:remote`.
+- `pnpm run build:web`, `pnpm run deploy`; `pnpm run db:create` / `db:migrate:local` / `db:migrate:remote`.
 - A merge to `main` deploys to production (Workers Builds). A change to `[triggers] crons` also needs
   `wrangler triggers deploy` after the merge. The deploy runbook is `HANDOFF.md`.
 
@@ -54,7 +54,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
   rollback is GENERATED (`scripts/mt/build-rollback.py`, CI fails if stale).
 - `web/` — TypeScript/Vite SPA, no framework: `main.ts` (state + acts), `render.ts`, one module per screen,
   `hash.ts` (routes), `trov.css`. `web/src/releases.ts` is Help › What's new (see Conventions).
-- `workers/sandbox/` — trov-sandbox, a SECOND Worker (own `wrangler.toml`, `npm run deploy:sandbox`, not deployed by a
+- `workers/sandbox/` — trov-sandbox, a SECOND Worker (own `wrangler.toml`, `pnpm run deploy:sandbox`, not deployed by a
   merge): the Daytona runner behind the `SANDBOX` binding (`sandboxes.md`). `src/` never imports it.
 - `plugins/trov/` — the Claude Code plugin + skills; `.claude-plugin/marketplace.json` distributes it.
 - `docs/architecture/` — per-area reference. `docs/superpowers/specs|plans/` — design history (dated; the
@@ -187,5 +187,5 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | rate limits, the mail sender, what a stranger can do | `abuse-limits.md` |
 | the bug-report / support form, `support_reports`, Platform › Support | `support.md` |
 | secrets, vars, bindings, `REPO_ENVIRONMENTS` | `env.md` |
-| the local dev seed and its scenarios, `npm run seed` / `dev:seeded` / `dev:as`, signing in as anyone locally | `local-dev.md` |
+| the local dev seed and its scenarios, `pnpm run seed` / `dev:seeded` / `dev:as`, signing in as anyone locally | `local-dev.md` |
 | where a file or migration lives | `layout.md` |

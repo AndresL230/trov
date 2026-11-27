@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Run by `npm run dev` before `wrangler dev` (docs/architecture/local-dev.md): a working local app from ONE command,
+// Run by `pnpm run dev` before `wrangler dev` (docs/architecture/local-dev.md): a working local app from ONE command,
 // in a fresh clone or a fresh git worktree (each worktree has its own `.wrangler/state`, so its own empty D1).
 //
 //   1. `.dev.vars` — when missing, copied from the main checkout's (a worktree), else written from
 //      `.dev.vars.example` with a random COOKIE_SECRET / TROV_KEK and DEV_LOGIN=AndresL230. Never overwritten.
 //   2. the LOCAL migrations applied (`wrangler d1 migrations apply DB --local`).
-//   3. the dev seed (`npm run seed`, every scenario) when the local D1 has no organization members yet — or always,
-//      with `--force` (`npm run dev:seeded`).
+//   3. the dev seed (`pnpm run seed`, every scenario) when the local D1 has no organization members yet — or always,
+//      with `--force` (`pnpm run dev:seeded`).
 //
 // LOCAL ONLY: it refuses --remote, and every wrangler call it makes is `--local`.
 import { existsSync, readFileSync, writeFileSync, copyFileSync } from "node:fs";
@@ -54,8 +54,8 @@ try {
   members = Number(JSON.parse(out)[0]?.results?.[0]?.n ?? 0);
 } catch { members = 0; }
 if (members === 0 || argv.includes("--force")) {
-  say(members === 0 ? "the local D1 is empty — seeding every scenario (npm run seed)…" : "reseeding every scenario (npm run seed)…");
+  say(members === 0 ? "the local D1 is empty — seeding every scenario (pnpm run seed)…" : "reseeding every scenario (pnpm run seed)…");
   execFileSync("node", ["scripts/seed-dev.mjs", ...(members === 0 ? ["--reset"] : []), ...(persist.length ? ["--persist-to", argv[i + 1]] : [])], { stdio: "inherit", env: { ...process.env } });
 } else {
-  say(`the local D1 has data (${members} memberships) — \`npm run seed\` reseeds, \`npm run seed -- --reset\` wipes and reseeds.`);
+  say(`the local D1 has data (${members} memberships) — \`pnpm run seed\` reseeds, \`pnpm run seed --reset\` wipes and reseeds.`);
 }
