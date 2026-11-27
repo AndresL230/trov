@@ -11,7 +11,7 @@ Code: `src/tools/sandboxes.ts` (the switch, ownership, the rows, the runner call
 (`limitCap`). Migration: `0089_sandboxes.sql`. The runner: `workers/sandbox/` (`src/index.ts` the endpoint,
 `src/ops.ts` each op and the org label, `src/daytona.ts` the REST client, its own `wrangler.toml`). Tests:
 `test/sandboxes.test.ts` (Trov's half), `test/sandbox-runner.test.ts` (the runner against a fake Daytona) — both in
-`npm test`, both typechecked by `tsconfig.worker.json`.
+`pnpm test`, both typechecked by `tsconfig.worker.json`.
 
 ## The switch: the `sandboxes` limit
 
@@ -82,7 +82,7 @@ week after stopping.
 
 A second Worker in this repo with its own `wrangler.toml` and no dependencies of its own (it uses the root
 `node_modules`; nothing in `src/` imports it, nor it `src/`). A merge to `main` deploys **only Trov**: the runner is
-deployed with `npm run deploy:sandbox` (or by a second Workers Builds project on this repo whose deploy command is
+deployed with `pnpm run deploy:sandbox` (or by a second Workers Builds project on this repo whose deploy command is
 that script, watching `workers/sandbox/**`). It has no public URL (`workers_dev = false`, no routes): the only way in is Trov's Service Binding. One
 endpoint, `POST /op` `{ org, actor, op, args }` → `200 { ok: true, result }` or `{ ok: false, code, error }` with
 `not_found` 404, `bad_request` 400, `conflict` 409 (e.g. the sandbox is stopped), `upstream` 502. It calls
@@ -93,8 +93,8 @@ private, auto-stop 60 minutes, auto-delete 7 days after stopping.
 
 ## Owner checklist
 
-1. Deploy trov-sandbox first — `npm run deploy:sandbox` — and set its secret:
-   `npx wrangler secret put DAYTONA_API_KEY -c workers/sandbox/wrangler.toml`.
+1. Deploy trov-sandbox first — `pnpm run deploy:sandbox` — and set its secret:
+   `pnpm exec wrangler secret put DAYTONA_API_KEY -c workers/sandbox/wrangler.toml`.
 2. The `[[services]]` block in Trov's `wrangler.toml` (binding `SANDBOX`, service `trov-sandbox`) is on: a fresh
    environment must deploy trov-sandbox BEFORE Trov, or Trov's deploy fails on the missing Worker.
 3. `0089_sandboxes` is applied by the deploy.

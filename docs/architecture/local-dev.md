@@ -1,9 +1,9 @@
 # Local development: a seeded app, named scenarios, signing in as anyone
 
 How to get a working local Trov with realistic data, switch between the states a feature has to handle, and act as
-any person — without OAuth, a network, or hand-made rows. Code: `scripts/seed-dev.mjs` (`npm run seed`),
+any person — without OAuth, a network, or hand-made rows. Code: `scripts/seed-dev.mjs` (`pnpm run seed`),
 `scripts/seed/scenarios.mjs` (the scenarios), `scripts/seed/team-rich.mjs` + `team-content.mjs` (the team's rich
-layer), `scripts/dev/ensure-seeded.mjs` (run by `npm run dev`), `scripts/dev/as.mjs` and `src/auth/dev-signin.ts`
+layer), `scripts/dev/ensure-seeded.mjs` (run by `pnpm run dev`), `scripts/dev/as.mjs` and `src/auth/dev-signin.ts`
 (signing in as someone). Test: `test/seed-scenarios.test.ts`.
 
 **The test seed is a different thing.** `scripts/seed/reset.mjs` is the canonical TEST seed: the harness runs it before
@@ -13,11 +13,11 @@ on top of the same tables.
 ## One command
 
 ```sh
-npm run dev          # build the web app, then: .dev.vars if missing, local migrations, seed an EMPTY local D1, wrangler dev
-npm run dev:seeded   # the same, but always reseeds every scenario first
+pnpm run dev          # build the web app, then: .dev.vars if missing, local migrations, seed an EMPTY local D1, wrangler dev
+pnpm run dev:seeded   # the same, but always reseeds every scenario first
 ```
 
-`npm run dev` runs `scripts/dev/ensure-seeded.mjs` before `wrangler dev`:
+`pnpm run dev` runs `scripts/dev/ensure-seeded.mjs` before `wrangler dev`:
 
 1. **`.dev.vars`** — when it is missing: copied from the main checkout's (in a git worktree), else written from
    `.dev.vars.example` with a random `COOKIE_SECRET` and `TROV_KEK` and `DEV_LOGIN=AndresL230`. Never overwritten.
@@ -25,7 +25,7 @@ npm run dev:seeded   # the same, but always reseeds every scenario first
 3. **The seed** — every scenario, when the local D1 has no organization members yet.
 
 **Worktrees.** Each git worktree has its OWN `.wrangler/state` (so its own empty D1). That is why the seed runs on the
-first `npm run dev` of a worktree: a fresh worktree opens to a populated My Work, Feed, Tickets, Roadmap, Docs, Review
+first `pnpm run dev` of a worktree: a fresh worktree opens to a populated My Work, Feed, Tickets, Roadmap, Docs, Review
 and Repo with nothing else to do. To reuse another checkout's data instead, copy its `.wrangler/state` over before
 starting (the AI build's preview server does this: `cp -r <other>/.wrangler/state .wrangler/`).
 
@@ -47,26 +47,26 @@ kept.
 | `hosting` | Fernhill Labs `/fernhill/` | Three environments whose parts are in every connection state: Vercel installed (connected), Fly.io token (connected), Render (error: the token was refused), Railway (not connected, two leftover project tokens), Netlify (revoked on Netlify's side), Cloudflare (connected, last good reading three days ago). | `ines-garcia` (owner), `AndresL230` (admin) |
 
 ```sh
-npm run seed                              # every scenario
-npm run seed -- --scenario hosting        # just one (or several: team,pro)
-npm run seed -- --reset                   # wipe every data table first (the canonical reset), then every scenario
-npm run seed -- --list                    # the scenarios and who to sign in as
-npm run seed -- --server http://localhost:8787   # see Ask chips below
+pnpm run seed                              # every scenario
+pnpm run seed --scenario hosting        # just one (or several: team,pro)
+pnpm run seed --reset                   # wipe every data table first (the canonical reset), then every scenario
+pnpm run seed --list                    # the scenarios and who to sign in as
+pnpm run seed --server http://localhost:8787   # see Ask chips below
 ```
 
 **With or without `--reset`, on any local D1.** A scenario writes everything it depends on (its org, its people, the
-global rows it names), so the plain `npm run seed` loads on a freshly migrated D1 too — one that holds SaplingLearn's
+global rows it names), so the plain `pnpm run seed` loads on a freshly migrated D1 too — one that holds SaplingLearn's
 org row alone (`test/seed-scenarios.test.ts` › "a freshly migrated D1"). Acme (`org_b`, the test seed's empty
 neighbour) and its Platform demo rows (an owner, a little usage, the admin trail; `platform-dev.mjs`) are the reset's:
-only `--reset` writes them. `npm run dev` passes `--reset` when the local D1 has no members yet.
+only `--reset` writes them. `pnpm run dev` passes `--reset` when the local D1 has no members yet.
 
 **Ask chips.** The showcase stores each item an Ask answer cites as the RUNNING server's RefView (`POST
-/ask/peek`). `npm run seed` asks the dev server at `:8787` (or `--server`) and uses it when it answers; when nothing
-answers (the seed `npm run dev` runs before `wrangler dev` starts), the answers keep their words without chips — run
-`npm run seed -- --scenario team` once the server is up to get them.
+/ask/peek`). `pnpm run seed` asks the dev server at `:8787` (or `--server`) and uses it when it answers; when nothing
+answers (the seed `pnpm run dev` runs before `wrangler dev` starts), the answers keep their words without chips — run
+`pnpm run seed --scenario team` once the server is up to get them.
 
 **Health readings go stale.** Repo › Overview treats a health reading older than 30 minutes as stale, by design. The
-seed writes fresh ones; after half an hour, `npm run seed -- --scenario team` makes them fresh again.
+seed writes fresh ones; after half an hour, `pnpm run seed --scenario team` makes them fresh again.
 
 **Credentials are placeholders.** Every stored hosting credential is a ciphertext that decrypts to nothing, every
 MCP / OAuth token row a hash no token produces. Poll now and Test connection fail locally; that is expected.
@@ -102,9 +102,9 @@ repo-setups e2e fixtures) writes for it; whichever runs last wins. Both print a 
 ## Signing in as someone else
 
 ```sh
-npm run dev:as -- meilin                  # prints http://localhost:8787/auth/dev/as?handle=meilin — open it
-npm run dev:as -- sanaok --org northwind  # straight into one of their orgs
-npm run dev:as                            # everyone in the local D1, by org and role
+pnpm run dev:as meilin                  # prints http://localhost:8787/auth/dev/as?handle=meilin — open it
+pnpm run dev:as sanaok --org northwind  # straight into one of their orgs
+pnpm run dev:as                            # everyone in the local D1, by org and role
 ```
 
 Or open `http://localhost:8787/auth/dev/as` and pick. The route makes an ORDINARY session (`createSession`, the

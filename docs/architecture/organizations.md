@@ -603,7 +603,7 @@ still refers to or one the person published — rows at once, bytes after the co
 A Time Travel restore to a point BEFORE a deletion brings that account or organization back, and loses the
 audit row that recorded it. So, before restoring:
 
-1. Save the deletions the restore will undo: `npx wrangler d1 execute trov --remote --json --command "SELECT
+1. Save the deletions the restore will undo: `pnpm exec wrangler d1 execute trov --remote --json --command "SELECT
    action, target, detail FROM org_admin_audit WHERE action IN ('org.delete','person.delete') AND at > '<the
    bookmark's time>'"`.
 2. Restore. Delete each `org.delete` target again by slug (Platform › the organization › Delete…).

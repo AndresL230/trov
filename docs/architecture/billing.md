@@ -383,7 +383,7 @@ its own, so there is one clock and it is the one the customer's e-mails from Str
 
 Everything works with test keys; do this before live. Locally: put the test values in `.dev.vars`
 (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_TEAM` and optionally `STRIPE_PRICE_TEAM_YEARLY`),
-run `npm run dev`, and forward events with the Stripe CLI — `stripe listen --forward-to
+run `pnpm run dev`, and forward events with the Stripe CLI — `stripe listen --forward-to
 localhost:8787/webhook/stripe` prints the `whsec_…` to use. Pay with card `4242 4242 4242 4242`, any future
 date, any CVC. `4000 0000 0000 0341` attaches and then fails on renewal (past due). The suite never reaches
 Stripe: `test/helpers/billing.ts` is an in-memory stand-in.
@@ -446,7 +446,7 @@ whoever built it: it needs your keys, and only you handle them. Never a live key
    is never embedded). `STRIPE_TAX=on` only if Stripe Tax is set up in test mode.
 2. The webhook has to reach your machine: `stripe listen --forward-to localhost:8787/webhook/stripe`
    (Stripe CLI), and put the `whsec_…` it prints in `.dev.vars` as `STRIPE_WEBHOOK_SECRET`. Keep it running.
-3. `npm run dev`, sign in as a person who is NOT the superadmin, and check `GET /api/billing/config` says
+3. `pnpm run dev`, sign in as a person who is NOT the superadmin, and check `GET /api/billing/config` says
    `"embedded": true` (absent → the key is missing, the wrong mode, or the stand-in base is still set).
 4. **The mount.** Open `/pricing` › Choose Pro. You should land on `/billing/checkout?plan=team&session=cs_test_…`:
    a skeleton for a moment, then Stripe's form inside the card. Console: no error from `js.stripe.com`.

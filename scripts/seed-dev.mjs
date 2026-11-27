@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// `npm run seed` — the LOCAL dev seed (docs/architecture/local-dev.md). Loads the named scenarios of
+// `pnpm run seed` — the LOCAL dev seed (docs/architecture/local-dev.md). Loads the named scenarios of
 // scripts/seed/scenarios.mjs into LOCAL D1 through wrangler; it refuses --remote outright and never reaches a network
 // (but the running dev server, below).
 //
-//   npm run seed                              every scenario (team, empty, free-at-cap, pro, hosting), each rewriting
+//   pnpm run seed                              every scenario (team, empty, free-at-cap, pro, hosting), each rewriting
 //                                             its own org — other orgs and your sessions are kept
-//   npm run seed -- --reset                   wipe every data table first (the canonical reset), then every scenario
-//   npm run seed -- --scenario team,hosting   only these
-//   npm run seed -- --list                    the scenarios, their orgs and who to sign in as; touches nothing
-//   npm run seed -- --server http://localhost:8787
+//   pnpm run seed --reset                   wipe every data table first (the canonical reset), then every scenario
+//   pnpm run seed --scenario team,hosting   only these
+//   pnpm run seed --list                    the scenarios, their orgs and who to sign in as; touches nothing
+//   pnpm run seed --server http://localhost:8787
 //                                             the RUNNING dev server: the AI showcase's Ask answers store each chip as
 //                                             that server's `/ask/peek` RefView (without it the answers keep their
 //                                             words but no chips). Default: tried at :8787, skipped if nothing answers.
@@ -46,7 +46,7 @@ if (argv.includes("--guide-demo")) {
     writeFileSync(file, statements.slice(i, i + 8).map((s) => s + ";").join("\n"), "utf8");
     execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--local", ...(persistTo ? [`--persist-to=${persistTo}`] : []), `--file=${file}`], { stdio: ["ignore", "ignore", "inherit"] });
   }
-  console.log(`seed-dev: done — the Guide demo dataset. Set DEV_LOGIN=${DEMO_LOGIN} and run \`npm run dev\`.`);
+  console.log(`seed-dev: done — the Guide demo dataset. Set DEV_LOGIN=${DEMO_LOGIN} and run \`pnpm run dev\`.`);
   process.exit(0);
 }
 
@@ -54,7 +54,7 @@ const { SCENARIOS, scenarioNames, loadScenarios } = await import("./seed/scenari
 if (argv.includes("--list")) {
   for (const s of SCENARIOS) {
     console.log(`${s.name.padEnd(12)} /${s.slug}/  ${s.what}`);
-    for (const [h, role] of s.signIn) console.log(`${"".padEnd(14)}sign in: npm run dev:as -- ${h}   (${role})`);
+    for (const [h, role] of s.signIn) console.log(`${"".padEnd(14)}sign in: pnpm run dev:as ${h}   (${role})`);
   }
   process.exit(0);
 }
@@ -67,12 +67,12 @@ const { localD1 } = await import("./seed/local-d1.mjs");
 const raw = localD1({ persistTo });
 const db = { query: async (sqls) => raw.query(sqls), apply: async (label, statements) => raw.apply(label, statements) };
 
-// The migrations must be applied (npm run dev does it; a bare `npm run seed` on a fresh state says so).
+// The migrations must be applied (pnpm run dev does it; a bare `pnpm run seed` on a fresh state says so).
 try {
   const [t] = raw.query(["SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('orgs', 'repo_apps', 'chat_threads')"]);
   if (t.length < 3) throw new Error("missing tables");
 } catch {
-  console.error("seed-dev: this local D1 has no (or an old) schema — apply the migrations first: npx wrangler d1 migrations apply DB --local");
+  console.error("seed-dev: this local D1 has no (or an old) schema — apply the migrations first: pnpm exec wrangler d1 migrations apply DB --local");
   process.exit(1);
 }
 
@@ -124,4 +124,4 @@ console.log("\nseed-dev: done. Open:");
 for (const s of SCENARIOS.filter((x) => names.includes(x.name))) {
   console.log(`  ${s.name.padEnd(12)} ${server}/${s.slug}/   sign in: ${s.signIn.map(([h, r]) => `${h} (${r})`).join(", ")}`);
 }
-console.log("Sign in as anyone: npm run dev:as -- <handle>   (or open /auth/dev/as on the dev server)");
+console.log("Sign in as anyone: pnpm run dev:as <handle>   (or open /auth/dev/as on the dev server)");

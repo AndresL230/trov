@@ -395,7 +395,7 @@ of statements rather than the repository functions a projection calls.
 A reader that may run beside others AWAITS its statement inside an `async` function (`return await all(…)`),
 never returns the helper's promise: when a statement fails at once (a binding whose `prepare` throws — the
 tests' "D1 is down" fakes), a promise handed back out of an `async` function is already rejected before the
-caller's handler reaches it, and workerd reports it as an unhandled rejection (`npm test` then exits 1). A
+caller's handler reaches it, and workerd reports it as an unhandled rejection (`pnpm test` then exits 1). A
 plain (non-`async`) function that returns the helper's promise is fine (`getPerson`).
 
 - **`getRepoDashboard`** (`src/tools/repo.ts`) is a dataflow: each read starts once what it depends on is

@@ -25,7 +25,7 @@ Apps) are rows it enters in Org settings, envelope-encrypted under `TROV_KEK` (`
 | `DB` | D1, database `trov`. Reached only through a context, inside `src/data/` (`data-layer.md`) | nothing works |
 | `ASSETS` | the static assets binding over `web/dist` (the prerendered public pages, the app shell `app.html`, the scripts and images, and the generated `_redirects` / `_headers`). It serves a file BEFORE the Worker runs, except `/`, which `run_worker_first = ["/"]` sends to the Worker first (the landing or the app shell, `web-ui.md` › The public pages, for crawlers) | no page is served |
 | `ARTIFACTS_BUCKET` | R2, bucket `trov-artifacts`: binary artifact bodies at `artifacts/<sha256>`, doc images, and uploaded avatars and organization images (`avatars/<sha256>`, `org-logos/<sha256>`) — `artifacts.md` | **the bucket must exist before the first deploy that carries the binding** (`wrangler r2 bucket create trov-artifacts`), or the deploy fails |
-| `SANDBOX` | Service Binding to the **trov-sandbox** Worker (`workers/sandbox/`, deployed with `npm run deploy:sandbox`), which holds the Daytona key and runs every sandbox op for one org — `sandboxes.md` | no `sandbox_*` tool is listed anywhere. trov-sandbox must be deployed before Trov: a binding to a Worker that does not exist fails the deploy |
+| `SANDBOX` | Service Binding to the **trov-sandbox** Worker (`workers/sandbox/`, deployed with `pnpm run deploy:sandbox`), which holds the Daytona key and runs every sandbox op for one org — `sandboxes.md` | no `sandbox_*` tool is listed anywhere. trov-sandbox must be deployed before Trov: a binding to a Worker that does not exist fails the deploy |
 
 `ASSETS`' caching (which files a browser may keep, and for how long) is `_headers`: `web-ui.md` › Browser caching.
 
@@ -84,7 +84,7 @@ for an organization whose admin turned them on, in the background, each request 
 | `GOOGLE_CLIENT_ID` | secret | the Google OAuth client id (the second sign-in provider) | `/auth/google/login` answers 503 |
 | `GOOGLE_CLIENT_SECRET` | secret | its client secret | the redirect still happens, the exchange fails and `/auth/google/callback` 401s `exchange_failed` |
 | `COOKIE_SECRET` | secret | the HMAC key for the session cookie, the sealed onboarding / OAuth-transaction cookies, the unsubscribe token (`/u/…`), artifact download links, and the hashed client address of a signed-out support report | no session can be made or read |
-| `DEV_LOGIN` | local only (`.dev.vars`) | bypasses OAuth and acts as this seeded user; with it set, `/` is the app shell, never the prerendered landing. A session cookie wins over it, which is how the local dev sign-in (`/auth/dev/as`, `npm run dev:as`) switches person — `local-dev.md` | — never set in production |
+| `DEV_LOGIN` | local only (`.dev.vars`) | bypasses OAuth and acts as this seeded user; with it set, `/` is the app shell, never the prerendered landing. A session cookie wins over it, which is how the local dev sign-in (`/auth/dev/as`, `pnpm run dev:as`) switches person — `local-dev.md` | — never set in production |
 
 ### The GitHub App (`github-app.md`)
 
@@ -147,7 +147,7 @@ a Worker secret.
 ### Build-time only (Workers Builds sets it; not a Worker var)
 
 `WORKERS_CI_COMMIT_SHA` — the commit Workers Builds is building. `web/site-build.ts` reads it (`process.env`, while
-`npm run build:web` runs) and writes `/source <github>/tree/<sha> 302` into `web/dist/_redirects`: the AGPL source
+`pnpm run build:web` runs) and writes `/source <github>/tree/<sha> 302` into `web/dist/_redirects`: the AGPL source
 link every surface uses (`shared/legal-core.ts` `SOURCE_PATH`; `web-ui.md` › Legal pages, consent and the source).
 Unset (a local build) → the rule points at the repository root. Anything that is not 7–40 hex characters is
 ignored. The Worker itself never reads it.
@@ -193,16 +193,16 @@ RAILWAY_TOKEN_STAGING` and `RAILWAY_TOKEN_PRODUCTION`** once SaplingLearn's Rail
 
 ## Preview deployments
 
-`[previews.*]` in `wrangler.toml`; `npm run deploy:preview`. A Preview is a branch's code on its own URL, with
+`[previews.*]` in `wrangler.toml`; `pnpm run deploy:preview`. A Preview is a branch's code on its own URL, with
 ONLY the bindings of the `[previews]` section — the empty D1 `trov-preview` and the R2 bucket
 `trov-preview-artifacts`, `NOTIFICATIONS_MODE = "local"`, no GitHub App slug, no Stripe price, no sign-in
 secrets (nobody can sign in to one). `[env.preview]` exists solely so that database can be migrated by name;
 nothing is deployed to it. Preview-only secrets: `wrangler preview secret put <NAME>`.
 
-**The non-production deploy command in the Cloudflare dashboard (Workers Builds) must be `npm run
+**The non-production deploy command in the Cloudflare dashboard (Workers Builds) must be `pnpm run
 deploy:preview` — never the production command**: Cloudflare refuses `wrangler deploy` from a branch build,
 but it does NOT refuse `wrangler d1 migrations apply trov --remote`, which applies an unreviewed branch's
-migration to production. Build command for both: `npm run build:web`. **This is a dashboard setting, not
+migration to production. Build command for both: `pnpm run build:web`. **This is a dashboard setting, not
 something the repo can enforce, and as of 2026-10-09 it is not set this way**: a push of any branch applies
 that branch's new migrations to the PRODUCTION database (and does not deploy the Worker). `HANDOFF.md` ›
 "A push of any other branch" says how to check and what to do until it is changed.

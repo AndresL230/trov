@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `npm run dev:as -- <handle> [--org <slug>] [--url http://localhost:8787]` — the link that signs the browser in as
+// `pnpm run dev:as <handle> [--org <slug>] [--url http://localhost:8787]` — the link that signs the browser in as
 // that seeded person on the running dev server (src/auth/dev-signin.ts; docs/architecture/local-dev.md). With no
 // handle, the people in the local D1 and their orgs. Opening the link makes an ordinary session; `/auth/dev/out`
 // goes back to DEV_LOGIN. Local only: the route answers 404 anywhere but a loopback origin with DEV_LOGIN set.
@@ -21,6 +21,6 @@ const [rows] = localD1().query([`SELECT p.handle, p.name, o.slug, m.role FROM pe
 let last = null;
 for (const r of rows) {
   if (r.slug !== last) { console.log(`\n/${r.slug}/`); last = r.slug; }
-  console.log(`  ${r.role.padEnd(7)} ${r.handle.padEnd(22)} npm run dev:as -- ${r.handle}${r.slug ? ` --org ${r.slug}` : ""}`);
+  console.log(`  ${r.role.padEnd(7)} ${r.handle.padEnd(22)} pnpm run dev:as ${r.handle}${r.slug ? ` --org ${r.slug}` : ""}`);
 }
 console.log(`\nOr open ${origin}/auth/dev/as and pick.`);

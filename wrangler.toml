@@ -40,7 +40,7 @@ binding = "ARTIFACTS_BUCKET"
 bucket_name = "trov-artifacts"
 
 # Service Binding: the trov-sandbox Worker (workers/sandbox — Daytona sandboxes for the `sandbox_*` MCP tools,
-# docs/architecture/sandboxes.md). trov-sandbox must be deployed (`npm run deploy:sandbox`) before this one: a binding to a
+# docs/architecture/sandboxes.md). trov-sandbox must be deployed (`pnpm run deploy:sandbox`) before this one: a binding to a
 # Worker that does not exist fails this deploy. Removed, no sandbox tool is listed anywhere.
 [[services]]
 binding = "SANDBOX"
@@ -104,7 +104,7 @@ enabled = true
 mode = "smart"
 
 # ── Preview deployments (a build of any branch but main) ─────────────────────────────────────────────
-# A Preview is the branch's code on its own URL, deployed by `npm run deploy:preview` (`wrangler preview`).
+# A Preview is the branch's code on its own URL, deployed by `pnpm run deploy:preview` (`wrangler preview`).
 # It gets ONLY the bindings in this section — never production's: its own EMPTY database and bucket, so
 # an unreviewed branch (and its migrations) can never read or change real data. It has no sign-in
 # secrets, so nobody can sign in to a Preview; it shows the public pages and proves the branch builds,
