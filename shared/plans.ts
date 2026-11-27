@@ -90,11 +90,12 @@ export const LIMITS: Record<LimitKey, LimitDef> = {
   project_pins: {
     label: "Pinned items", one: "pinned item", many: "pinned items", counts: "Items pinned to one project.", per: "project", unit: "count", min: 0, listed: false,
   },
-  // Sandboxes (0089_sandboxes; docs/architecture/sandboxes.md): Daytona VMs the org's agents run over MCP, on Trov's
-  // Daytona account. 0 on EVERY plan — a superadmin turns them on for one org with a Platform override — so it is
-  // NOT LISTED: no plan sells it. 0 also means the sandbox tools refuse everything, not just a new one.
+  // Sandboxes (0089_sandboxes, 0090_sandbox_monitor; docs/architecture/sandboxes.md): Daytona VMs the org's agents
+  // create over MCP, on Trov's Daytona account. Pro includes 3 at a time, Enterprise is unlimited, Free and Personal
+  // include none. A Platform override of 0 is Trov TURNING THEM OFF for the org (`sandboxAccess`, src/plans/gate.ts):
+  // the plan is unchanged and every sandbox tool refuses.
   sandboxes: {
-    label: "Sandboxes", one: "sandbox", many: "sandboxes", counts: "Sandboxes the organization has that are not deleted.", per: "org", unit: "count", min: 0, listed: false,
+    label: "Sandboxes", one: "sandbox", many: "sandboxes", counts: "Sandboxes that exist at once. Deleted ones do not count.", per: "org", unit: "count", min: 0,
   },
 };
 
@@ -164,12 +165,12 @@ export const PLANS: Record<PlanId, PlanDef> = {
   },
   team: {
     id: "team", name: "Pro", description: "For a team, paid per seat.",
-    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 300, tags: 50, projects: null, project_pins: 200, sandboxes: 0 },
+    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 300, tags: 50, projects: null, project_pins: 200, sandboxes: 3 },
     features: [], offered: true, billing: null, perSeat: ["ai_chat"],
   },
   enterprise: {
     id: "enterprise", name: "Enterprise", description: "Limits set for the organization by Trov.",
-    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null, ai_runs: null, jev_checks: null, ai_chat: null, tags: null, projects: null, project_pins: null, sandboxes: 0 },
+    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null, ai_runs: null, jev_checks: null, ai_chat: null, tags: null, projects: null, project_pins: null, sandboxes: null },
     features: [], offered: true, billing: null,
   },
 };

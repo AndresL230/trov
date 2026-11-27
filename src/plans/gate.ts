@@ -172,6 +172,18 @@ export async function limitCap(ctx: TenantContext, limit: TenantLimit): Promise<
   return resolveEntitlements(state.plan, state.overrides, state.members)[limit];
 }
 
+/** Sandboxes for this org (docs/architecture/sandboxes.md › The switch): `off` when Trov turned them off (a Platform
+ *  override of 0, whatever the plan), `not_included` when the plan includes none (Free, Personal), else `on` with the
+ *  resolved cap (null = unlimited). A canceled plan includes nothing new. */
+export type SandboxAccess = { status: "on" | "off" | "not_included"; cap: number | null; plan: string };
+export async function sandboxAccess(ctx: TenantContext): Promise<SandboxAccess> {
+  const state = await planFor(ctx);
+  const plan = state.plan;
+  if ((state.overrides as Partial<Record<TenantLimit, number | null>>).sandboxes === 0) return { status: "off", cap: 0, plan };
+  const cap = state.status === "canceled" ? 0 : resolveEntitlements(state.plan, state.overrides, state.members).sandboxes;
+  return cap === 0 ? { status: "not_included", cap: 0, plan } : { status: "on", cap, plan };
+}
+
 export async function requireFeature(ctx: TenantContext, feature: FeatureKey): Promise<void> {
   const refusal = planFeatureRefusal(await planFor(ctx), feature);
   if (refusal) throw new PlanFeatureError(refusal);

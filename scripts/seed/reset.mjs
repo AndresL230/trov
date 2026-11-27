@@ -17,7 +17,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM platform_outbox_bodies",
   // Support reports (0049_support_reports): a global table — no FK in or out.
   "DELETE FROM support_reports",
-  "UPDATE orgs SET plan = 'enterprise', plan_overrides = '{}', plan_source = 'granted', plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = NULL, plan_changed_by = NULL, plan_gift_until = NULL, ai_automation = 1, ai_chat_auto = 1, ai_chat_github = 0",
+  "UPDATE orgs SET plan = 'enterprise', plan_overrides = '{}', plan_source = 'granted', plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = NULL, plan_changed_by = NULL, plan_gift_until = NULL, ai_automation = 1, ai_chat_auto = 1, ai_chat_github = 0, sandbox_members_act = 1, sandbox_public = 0",
   "DELETE FROM abuse_counters",
   // Sync GitHub runs (0046_sync_runs) reference orgs.
   "DELETE FROM sync_runs",
@@ -46,6 +46,8 @@ export const RESET_STATEMENTS = [
   "DELETE FROM projects",
   // Sandboxes (0089_sandboxes): which Daytona sandboxes are each org's.
   "DELETE FROM org_sandboxes",
+  "DELETE FROM sandbox_events",
+  "DELETE FROM sandbox_profiles",
   // Ask Trov (0066_ask): cards, attachment links and messages hang off threads (chat_fts follows its messages by trigger).
   "DELETE FROM chat_thread_people", // 0077_ask_people_sharing: who a thread is shared with by name
   "DELETE FROM chat_actions",

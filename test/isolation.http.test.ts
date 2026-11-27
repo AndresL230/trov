@@ -415,6 +415,12 @@ const TENANT: Record<string, Row> = {
   // repository is not B's, so B's admin gets 404 and B's member the 403; nothing of A's is read or written.
   "POST /repos/:owner/:name/scan": J({}), "POST /repos/:owner/:name/suggestions/undo": J({ undo: "x" }),
   "POST /repos/:owner/:name/suggestions/:id/accept": J({}), "POST /repos/:owner/:name/suggestions/:id/ignore": J({}),
+  // src/sandboxes/routes.ts — Monitor › Sandboxes and Org settings › Sandboxes (0090_sandbox_monitor): every read is the
+  // PATH org's rows; a sandbox or profile is looked up in the PATH org, so A's is B's 404 and nothing of A's changes.
+  "GET /sandboxes": {}, "POST /sandboxes/refresh": { body: {}, allow: [503] }, // the runner stand-in answers unavailable: Refresh degrades
+  "POST /sandboxes/:id/start": J({}), "POST /sandboxes/:id/stop": J({}), "DELETE /sandboxes/:id": {}, "POST /sandboxes/:id/preview": J({ port: 5173 }),
+  "GET /sandbox-settings": {}, "PUT /sandbox-settings/rules": J({ members_act: false }),
+  "PUT /sandbox-profiles/:key": J({ name: "Hijack", setup: ["echo hijacked"] }), "DELETE /sandbox-profiles/:key": {},
 };
 
 /** Session routes that are not `tenantGate`'s — and why each is safe with no membership. */

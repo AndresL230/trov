@@ -79,6 +79,7 @@ import { localUpstreamFetch } from "./sync/local-upstream";
 import { askGithubTransport } from "./repo/ask-github";
 import { askFlagsFor } from "./data/ask";
 import { repoSettingsApp } from "./repo/settings-routes";
+import { sandboxesApp } from "./sandboxes/routes";
 import { aiPreviewShown, previewFeedRows, withPreviewFeed, withPreviewRoadmap } from "./ai/preview";
 import { aiSwitchOn } from "./data/ai-cards";
 import { roadmapForPerson } from "./data/org-insights";
@@ -1400,6 +1401,7 @@ provideAskLocalUpstream(localUpstreamFetch);
 app.route("/api/o/:slug", askApp); // Ask Trov: the stream, threads, write cards, attachments, Settings › Trov — cookie only (src/ai/ask/routes.ts)
 app.route("/api/o/:slug", projectsApp); // Projects (0086_projects): the list, a project, members, pins, files — cookie only (src/projects/routes.ts)
 app.route("/api/o/:slug", repoSettingsApp); // the Repo screen's per-repository defaults (0071_repo_settings) — admin, cookie only (src/repo/settings-routes.ts)
+app.route("/api/o/:slug", sandboxesApp); // Monitor › Sandboxes and Org settings › Sandboxes (0090_sandbox_monitor) — cookie only (src/sandboxes/routes.ts)
 // The org segment is named `:org` on this mount, NOT `:slug`: many tenant routes have a `:slug` of their
 // own (`/doc/:slug`, `/prompts/:slug`, `/artifacts/:slug`), and one path must not carry the name twice.
 // Nothing reads `:org` — `tenantGate` (mounted on `/api/o/:slug/*` above) resolved the org from its own

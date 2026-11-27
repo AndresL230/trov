@@ -50,7 +50,7 @@ seats make it unlimited. An override of the per-seat limit itself is the org's W
 | `projects` | 2 | unlimited | unlimited | 2 | LIVE projects (`0086_projects`: not archived, not deleted) | `createProject`, `restoreProject` (`src/tools/projects.ts`) |
 | `project_pins` | 20 | 200 | unlimited | 20 | PER PROJECT (`LimitDef.per: "project"`): one project's pins — `requirePlan(ctx, "project_pins", n, { project })` | `pinRefs`, `uploadIntoProject` (`src/tools/projects.ts`). **Not listed** (below) |
 
-| `sandboxes` | 0 | 0 | 0 | 0 | the org's sandboxes that are not deleted (`org_sandboxes`, 0089) | `createSandbox` (`src/tools/sandboxes.ts`); **0 is also the off switch**: every sandbox tool refuses `not_enabled` (`sandboxes.md`). **Not listed**; a superadmin turns it on per org with an override |
+| `sandboxes` | 0 | 3 | unlimited | 0 | the org's sandboxes that are not deleted (`org_sandboxes`, 0089), AT ONCE | `createSandbox` (`src/tools/sandboxes.ts`); a plan with 0 reads `not_included` and an override of **0 turns them off** for the org (`sandboxAccess`): every sandbox tool refuses `not_enabled` (`sandboxes.md`). Listed |
 
 **Projects (2026-11-05)** — `projects.md` › Limits. Not per seat. `project_pins` is counted per PROJECT, the first limit
 that is: `requirePlan` and `limitUse` take an optional scope (`{ project }`) for it, and unscoped (the Plan view's one
